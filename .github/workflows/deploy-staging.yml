@@ -1,0 +1,57 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target staging environment
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+
+jobs:
+  build-and-deploy:
+    name: Build API Image & Deploy Staging
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Install dependencies & verify build
+        run: |
+          pnpm install --no-frozen-lockfile
+          pnpm --filter @diriddle/shared-types build
+          pnpm run type-check
+          pnpm --filter @diriddle/api build
+          pnpm --filter @diriddle/admin build
+
+      - name: Build API Docker image
+        run: |
+          docker build -f infrastructure/docker/Dockerfile.api -t diriddle-api:${{ github.sha }} .
+
+      - name: Run Prisma migrations (staging)
+        if: ${{ vars.STAGING_DATABASE_URL != '' }}
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: pnpm --filter @diriddle/api exec prisma migrate deploy
+
+      - name: Deploy notification
+        run: |
+          echo "Staging build diriddle-api:${{ github.sha }} verified and ready for registry push/deploy."

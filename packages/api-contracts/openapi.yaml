@@ -1,0 +1,1347 @@
+openapi: 3.1.0
+info:
+  title: diriddle API
+  version: 1.0.0
+  description: >
+    Anonymous location-based social network API for India.
+    All endpoints are prefixed with /v1 and use ErrorEnvelope for errors
+    and Bearer JWT authentication for protected resources.
+servers:
+  - url: http://localhost:3000/v1
+    description: Local Windows / Docker development server
+  - url: https://api-staging.diriddle.in/v1
+    description: Staging server
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Users
+  - name: Communities
+  - name: Feed
+  - name: Posts
+  - name: Comments
+  - name: Safety
+  - name: Notifications
+  - name: Admin
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Service health check
+      security: []
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  mode:
+                    type: string
+                    example: postgresql
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /auth/send-otp:
+    post:
+      tags: [Auth]
+      summary: Send OTP to Indian phone number or email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendOtpRequest'
+      responses:
+        '200':
+          description: OTP dispatched
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  expires_in_seconds:
+                    type: integer
+        '429':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /auth/verify-otp:
+    post:
+      tags: [Auth]
+      summary: Verify OTP and issue access & refresh tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyOtpRequest'
+      responses:
+        '200':
+          description: Authenticated session tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokensResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Refreshed tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokensResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke current session
+      responses:
+        '204':
+          description: Logged out
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current authenticated auth identity status
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileDto'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Get current user profile and preferences
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileDto'
+    delete:
+      tags: [Users]
+      summary: Soft-delete account and anonymize user data
+      responses:
+        '204':
+          description: Account deletion initiated
+
+  /users/me/preferences:
+    patch:
+      tags: [Users]
+      summary: Update location and age verification preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                selected_city:
+                  type: string
+                selected_state:
+                  type: string
+                location_permission_granted:
+                  type: boolean
+                age_verified:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileDto'
+
+  /users/me/identities:
+    get:
+      tags: [Users]
+      summary: List user's community-scoped anonymous identities
+      responses:
+        '200':
+          description: List of anonymous identities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AnonymousIdentityDto'
+
+  /communities:
+    get:
+      tags: [Communities]
+      summary: List active communities across Indian cities, neighborhoods, and campuses
+      parameters:
+        - name: city
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/CommunityType'
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Paginated communities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCommunityResponse'
+
+  /communities/{communityId}:
+    get:
+      tags: [Communities]
+      summary: Get community details
+      parameters:
+        - $ref: '#/components/parameters/CommunityId'
+      responses:
+        '200':
+          description: Community detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunityDto'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /communities/{communityId}/join:
+    post:
+      tags: [Communities]
+      summary: Join a community
+      parameters:
+        - $ref: '#/components/parameters/CommunityId'
+      responses:
+        '200':
+          description: Joined community
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: joined
+    delete:
+      tags: [Communities]
+      summary: Leave a community
+      parameters:
+        - $ref: '#/components/parameters/CommunityId'
+      responses:
+        '204':
+          description: Left community
+
+  /communities/{communityId}/feed:
+    get:
+      tags: [Communities]
+      summary: Get posts inside a community
+      parameters:
+        - $ref: '#/components/parameters/CommunityId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Community posts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPostResponse'
+
+  /feed/nearby:
+    get:
+      tags: [Feed]
+      summary: Get nearby community feed
+      parameters:
+        - name: community_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: city
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Nearby feed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPostResponse'
+
+  /feed/latest:
+    get:
+      tags: [Feed]
+      summary: Get latest posts
+      parameters:
+        - name: community_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: category
+          in: query
+          schema:
+            $ref: '#/components/schemas/PostCategory'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Latest feed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPostResponse'
+
+  /feed/trending:
+    get:
+      tags: [Feed]
+      summary: Get trending posts in the last 24 hours
+      parameters:
+        - name: community_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Trending feed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPostResponse'
+
+  /feed/categories:
+    get:
+      tags: [Feed]
+      summary: List available post categories and counts
+      responses:
+        '200':
+          description: Categories list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        category:
+                          $ref: '#/components/schemas/PostCategory'
+                        label:
+                          type: string
+                        post_count:
+                          type: integer
+
+  /posts:
+    post:
+      tags: [Posts]
+      summary: Create an anonymous post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePostPayload'
+      responses:
+        '201':
+          description: Created post
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostDto'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /posts/{postId}:
+    get:
+      tags: [Posts]
+      summary: Get single post details
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        '200':
+          description: Post detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostDto'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags: [Posts]
+      summary: Delete own post
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        '204':
+          description: Deleted
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /posts/{postId}/reactions:
+    post:
+      tags: [Posts]
+      summary: Add or update reaction on a post
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reaction_type]
+              properties:
+                reaction_type:
+                  $ref: '#/components/schemas/ReactionType'
+      responses:
+        '200':
+          description: Updated reaction counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReactionSummaryResponse'
+    delete:
+      tags: [Posts]
+      summary: Remove user's reaction from post
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        '200':
+          description: Updated reaction counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReactionSummaryResponse'
+
+  /posts/{postId}/save:
+    post:
+      tags: [Posts]
+      summary: Bookmark a post
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  saved:
+                    type: boolean
+    delete:
+      tags: [Posts]
+      summary: Remove bookmark from a post
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      responses:
+        '200':
+          description: Unsaved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  saved:
+                    type: boolean
+
+  /posts/{postId}/comments:
+    get:
+      tags: [Comments]
+      summary: List threaded comments on a post
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated comments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCommentResponse'
+    post:
+      tags: [Comments]
+      summary: Add a top-level comment to a post
+      parameters:
+        - $ref: '#/components/parameters/PostId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 1000
+      responses:
+        '201':
+          description: Created comment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentDto'
+
+  /comments/{commentId}/replies:
+    post:
+      tags: [Comments]
+      summary: Reply to a comment
+      parameters:
+        - $ref: '#/components/parameters/CommentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 1000
+      responses:
+        '201':
+          description: Created reply
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentDto'
+
+  /comments/{commentId}:
+    delete:
+      tags: [Comments]
+      summary: Delete own comment
+      parameters:
+        - $ref: '#/components/parameters/CommentId'
+      responses:
+        '204':
+          description: Deleted
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /reports:
+    post:
+      tags: [Safety]
+      summary: Submit an abuse, harassment, or policy report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_type, target_id, reason]
+              properties:
+                target_type:
+                  type: string
+                  enum: [POST, COMMENT, USER]
+                target_id:
+                  type: string
+                  format: uuid
+                reason:
+                  $ref: '#/components/schemas/ReportReason'
+                description:
+                  type: string
+                  maxLength: 500
+      responses:
+        '201':
+          description: Report created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  status:
+                    $ref: '#/components/schemas/ReportStatus'
+
+  /reports/me:
+    get:
+      tags: [Safety]
+      summary: View status of reports submitted by current user
+      responses:
+        '200':
+          description: User's reports
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReportStatusDto'
+
+  /blocks:
+    post:
+      tags: [Safety]
+      summary: Block an anonymous user or author
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Blocked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  blocked:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /blocks/{userId}:
+    delete:
+      tags: [Safety]
+      summary: Unblock a user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Unblocked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  blocked:
+                    type: boolean
+
+  /safety/blocked:
+    get:
+      tags: [Safety]
+      summary: List blocked accounts for current user
+      responses:
+        '200':
+          description: Blocked accounts list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        blocked_id:
+                          type: string
+                        created_at:
+                          type: string
+                          format: date-time
+                  next_cursor:
+                    type: [string, 'null']
+                  has_more:
+                    type: boolean
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List notifications for current user
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Notifications feed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedNotificationResponse'
+
+  /notifications/{notificationId}/read:
+    patch:
+      tags: [Notifications]
+      summary: Mark a single notification as read
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Marked as read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationDto'
+
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Mark all notifications as read
+      responses:
+        '200':
+          description: All marked read
+
+  /notifications/preferences:
+    get:
+      tags: [Notifications]
+      summary: Get notification preferences
+      responses:
+        '200':
+          description: Preferences list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationPreferenceDto'
+    put:
+      tags: [Notifications]
+      summary: Update notification preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [preferences]
+              properties:
+                preferences:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/NotificationPreferenceDto'
+      responses:
+        '200':
+          description: Updated preferences
+
+  /admin/overview:
+    get:
+      tags: [Admin]
+      summary: Get platform KPI overview and moderation queue stats
+      responses:
+        '200':
+          description: Admin overview metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dau:
+                    type: integer
+                  mau:
+                    type: integer
+                  posts_today:
+                    type: integer
+                  open_reports:
+                    type: integer
+                  high_priority_reports:
+                    type: integer
+                  active_communities:
+                    type: integer
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /admin/reports:
+    get:
+      tags: [Admin]
+      summary: List moderation reports queue
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ReportStatus'
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum: [LOW, NORMAL, HIGH, URGENT]
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Reports queue
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReportStatusDto'
+                  next_cursor:
+                    type: [string, 'null']
+                  has_more:
+                    type: boolean
+
+  /admin/moderation/actions:
+    post:
+      tags: [Admin]
+      summary: Execute a moderation action and write immutable audit log
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_type, target_id, action_type, reason]
+              properties:
+                report_id:
+                  type: string
+                  format: uuid
+                target_type:
+                  type: string
+                  enum: [POST, COMMENT, USER]
+                target_id:
+                  type: string
+                  format: uuid
+                action_type:
+                  $ref: '#/components/schemas/ModerationActionType'
+                reason:
+                  type: string
+                notes:
+                  type: string
+      responses:
+        '201':
+          description: Moderation action recorded
+
+  /admin/audit-logs:
+    get:
+      tags: [Admin]
+      summary: View immutable admin & moderation audit logs
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Audit logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditLogDto'
+                  next_cursor:
+                    type: [string, 'null']
+                  has_more:
+                    type: boolean
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    CommunityId:
+      name: communityId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PostId:
+      name: postId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CommentId:
+      name: commentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 20
+        maximum: 100
+
+  responses:
+    ErrorResponse:
+      description: Error envelope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [statusCode, error, message, requestId]
+      properties:
+        statusCode:
+          type: integer
+          example: 400
+        error:
+          type: string
+          example: BAD_REQUEST
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: Validation failed
+        requestId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+
+    PostCategory:
+      type: string
+      enum: [CONFESSION, STORY, QUESTION, GOSSIP, RANT, CAMPUS, NEIGHBORHOOD, LOCAL_ALERT, POLL]
+    PostStatus:
+      type: string
+      enum: [PUBLISHED, DRAFT, UNDER_REVIEW, REMOVED, EXPIRED]
+    CommentStatus:
+      type: string
+      enum: [ACTIVE, REMOVED, FLAGGED]
+    CommunityType:
+      type: string
+      enum: [CITY, NEIGHBORHOOD, CAMPUS, SPECIAL]
+    CommunityStatus:
+      type: string
+      enum: [ACTIVE, INACTIVE, PENDING]
+    ReactionType:
+      type: string
+      enum: [LIKE, HEART, LAUGH, WOW, SAD, ANGRY]
+    ReportReason:
+      type: string
+      enum: [HARASSMENT, SPAM, DOXXING, HATE_SPEECH, MISINFORMATION, IMPERSONATION, NSFW, OTHER]
+    ReportStatus:
+      type: string
+      enum: [RECEIVED, UNDER_REVIEW, RESOLVED, DISMISSED]
+    ModerationActionType:
+      type: string
+      enum: [APPROVE, REMOVE, RESTRICT, WARN, TEMPORARY_SUSPENSION, PERMANENT_SUSPENSION, ESCALATE]
+    NotificationType:
+      type: string
+      enum: [COMMENT_REPLY, REACTION, COMMUNITY_POST, SYSTEM]
+    Visibility:
+      type: string
+      enum: [COMMUNITY, PUBLIC]
+
+    SendOtpRequest:
+      type: object
+      required: [identifier, type]
+      properties:
+        identifier:
+          type: string
+          example: '+919876543210'
+        type:
+          type: string
+          enum: [phone, email]
+
+    VerifyOtpRequest:
+      type: object
+      required: [identifier, otp, type]
+      properties:
+        identifier:
+          type: string
+          example: '+919876543210'
+        otp:
+          type: string
+          example: '123456'
+        type:
+          type: string
+          enum: [phone, email]
+
+    AuthTokensResponse:
+      type: object
+      required: [access_token, refresh_token, user_id]
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        user_id:
+          type: string
+          format: uuid
+        is_new_user:
+          type: boolean
+
+    UserProfileDto:
+      type: object
+      required: [id, status, age_verified, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [ACTIVE, SUSPENDED, DELETED]
+        age_verified:
+          type: boolean
+        selected_city:
+          type: [string, 'null']
+        selected_state:
+          type: [string, 'null']
+        location_permission_granted:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    AnonymousIdentityDto:
+      type: object
+      required: [id, display_code, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        community_id:
+          type: [string, 'null']
+          format: uuid
+        community_name:
+          type: string
+        display_code:
+          type: string
+          example: 'Anonymous #0042'
+        created_at:
+          type: string
+          format: date-time
+
+    CommunityDto:
+      type: object
+      required: [id, name, slug, type, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        type:
+          $ref: '#/components/schemas/CommunityType'
+        city:
+          type: [string, 'null']
+        state:
+          type: [string, 'null']
+        status:
+          $ref: '#/components/schemas/CommunityStatus'
+        member_count:
+          type: integer
+        post_count:
+          type: integer
+        is_member:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    CreatePostPayload:
+      type: object
+      required: [community_id, category, content]
+      properties:
+        community_id:
+          type: string
+          format: uuid
+        category:
+          $ref: '#/components/schemas/PostCategory'
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        visibility:
+          $ref: '#/components/schemas/Visibility'
+        comments_enabled:
+          type: boolean
+          default: true
+        idempotency_key:
+          type: string
+
+    PostDto:
+      type: object
+      required: [id, anonymous_name, community_id, category, content, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        anonymous_name:
+          type: string
+          example: 'Anonymous #0104'
+        community_id:
+          type: string
+          format: uuid
+        community_name:
+          type: string
+        category:
+          $ref: '#/components/schemas/PostCategory'
+        content:
+          type: string
+        status:
+          $ref: '#/components/schemas/PostStatus'
+        visibility:
+          $ref: '#/components/schemas/Visibility'
+        comments_enabled:
+          type: boolean
+        comment_count:
+          type: integer
+        reaction_count:
+          type: integer
+        reaction_counts:
+          type: object
+          additionalProperties:
+            type: integer
+        user_reaction:
+          type: [string, 'null']
+        is_saved:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    CommentDto:
+      type: object
+      required: [id, anonymous_name, content, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        post_id:
+          type: string
+          format: uuid
+        parent_comment_id:
+          type: [string, 'null']
+          format: uuid
+        anonymous_name:
+          type: string
+        content:
+          type: string
+        status:
+          $ref: '#/components/schemas/CommentStatus'
+        created_at:
+          type: string
+          format: date-time
+        replies:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommentDto'
+
+    ReactionSummaryResponse:
+      type: object
+      properties:
+        reaction_counts:
+          type: object
+          additionalProperties:
+            type: integer
+        user_reaction:
+          type: [string, 'null']
+
+    NotificationDto:
+      type: object
+      required: [id, type, payload, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        reference_id:
+          type: [string, 'null']
+        payload:
+          type: object
+        read_at:
+          type: [string, 'null']
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    NotificationPreferenceDto:
+      type: object
+      required: [notification_type, push_enabled, in_app_enabled]
+      properties:
+        notification_type:
+          $ref: '#/components/schemas/NotificationType'
+        push_enabled:
+          type: boolean
+        in_app_enabled:
+          type: boolean
+
+    ReportStatusDto:
+      type: object
+      required: [id, target_type, target_id, reason, status, priority, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        target_type:
+          type: string
+        target_id:
+          type: string
+          format: uuid
+        reason:
+          $ref: '#/components/schemas/ReportReason'
+        description:
+          type: [string, 'null']
+        status:
+          $ref: '#/components/schemas/ReportStatus'
+        priority:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    AuditLogDto:
+      type: object
+      required: [id, actor_id, action, resource_type, resource_id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        actor_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    PaginatedCommunityResponse:
+      type: object
+      required: [data, next_cursor, has_more]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommunityDto'
+        next_cursor:
+          type: [string, 'null']
+        has_more:
+          type: boolean
+
+    PaginatedPostResponse:
+      type: object
+      required: [data, next_cursor, has_more]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PostDto'
+        next_cursor:
+          type: [string, 'null']
+        has_more:
+          type: boolean
+
+    PaginatedCommentResponse:
+      type: object
+      required: [data, next_cursor, has_more]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommentDto'
+        next_cursor:
+          type: [string, 'null']
+        has_more:
+          type: boolean
+
+    PaginatedNotificationResponse:
+      type: object
+      required: [data, next_cursor, has_more]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationDto'
+        next_cursor:
+          type: [string, 'null']
+        has_more:
+          type: boolean

@@ -1,0 +1,519 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum CommunityType {
+  CITY
+  NEIGHBORHOOD
+  CAMPUS
+  SPECIAL
+}
+
+enum CommunityStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+}
+
+enum MembershipStatus {
+  ACTIVE
+  LEFT
+  BANNED
+}
+
+enum PostCategory {
+  CONFESSION
+  STORY
+  QUESTION
+  GOSSIP
+  RANT
+  CAMPUS
+  NEIGHBORHOOD
+  LOCAL_ALERT
+  POLL
+}
+
+enum PostStatus {
+  PUBLISHED
+  DRAFT
+  UNDER_REVIEW
+  REMOVED
+  EXPIRED
+}
+
+enum Visibility {
+  COMMUNITY
+  PUBLIC
+}
+
+enum CommentStatus {
+  ACTIVE
+  REMOVED
+  FLAGGED
+}
+
+enum ReactionType {
+  LIKE
+  HEART
+  LAUGH
+  WOW
+  SAD
+  ANGRY
+}
+
+enum ReportReason {
+  HARASSMENT
+  SPAM
+  DOXXING
+  HATE_SPEECH
+  MISINFORMATION
+  IMPERSONATION
+  NSFW
+  OTHER
+}
+
+enum ReportStatus {
+  RECEIVED
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+enum ModerationActionType {
+  APPROVE
+  REMOVE
+  RESTRICT
+  WARN
+  TEMPORARY_SUSPENSION
+  PERMANENT_SUSPENSION
+  ESCALATE
+}
+
+enum AppealStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum NotificationType {
+  COMMENT_REPLY
+  REACTION
+  COMMUNITY_POST
+  SYSTEM
+}
+
+enum AdminRoleType {
+  SUPER_ADMIN
+  TRUST_SAFETY_LEAD
+  TRUST_SAFETY
+  MODERATION_LEAD
+  MODERATOR
+  COMMUNITY_MANAGER
+  ANALYST
+}
+
+model User {
+  id          String     @id @default(uuid())
+  authId      String     @unique @map("auth_id")
+  status      UserStatus @default(ACTIVE)
+  ageVerified Boolean    @default(false) @map("age_verified")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  deletedAt   DateTime?  @map("deleted_at")
+
+  anonymousIdentities AnonymousIdentity[]
+  communityMembers    CommunityMember[]
+  posts               Post[]
+  comments            Comment[]
+  reactions           Reaction[]
+  savedPosts          SavedPost[]
+  reportsFiled        Report[]                 @relation("ReporterRelation")
+  blocksInitiated     Block[]                  @relation("BlockerRelation")
+  blocksReceived      Block[]                  @relation("BlockedRelation")
+  notifications       Notification[]
+  deviceTokens        DeviceToken[]
+  notificationPrefs   NotificationPreference[]
+  userConsents        UserConsent[]
+  locationPreference  LocationPreference?
+  idempotencyKeys     IdempotencyKey[]
+  adminRole           AdminRole?
+  auditLogs           AuditLog[]
+  appeals             ModerationAppeal[]
+
+  @@map("users")
+}
+
+model AnonymousIdentity {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  communityId String?  @map("community_id")
+  displayCode String   @map("display_code")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user      User       @relation(fields: [userId], references: [id])
+  community Community? @relation(fields: [communityId], references: [id])
+  posts     Post[]
+  comments  Comment[]
+
+  @@unique([userId, communityId])
+  @@map("anonymous_identities")
+}
+
+model Community {
+  id        String          @id @default(uuid())
+  name      String
+  slug      String          @unique
+  type      CommunityType
+  city      String?
+  state     String?
+  geoCell   String?         @map("geo_cell")
+  status    CommunityStatus @default(ACTIVE)
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  members             CommunityMember[]
+  posts               Post[]
+  anonymousIdentities AnonymousIdentity[]
+
+  @@index([city, status])
+  @@map("communities")
+}
+
+model CommunityMember {
+  id          String           @id @default(uuid())
+  userId      String           @map("user_id")
+  communityId String           @map("community_id")
+  status      MembershipStatus @default(ACTIVE)
+  joinedAt    DateTime         @default(now()) @map("joined_at")
+
+  user      User      @relation(fields: [userId], references: [id])
+  community Community @relation(fields: [communityId], references: [id])
+
+  @@unique([userId, communityId])
+  @@map("community_members")
+}
+
+model Post {
+  id                  String       @id @default(uuid())
+  userId              String       @map("user_id")
+  anonymousIdentityId String       @map("anonymous_identity_id")
+  communityId         String       @map("community_id")
+  category            PostCategory
+  content             String
+  status              PostStatus   @default(PUBLISHED)
+  visibility          Visibility   @default(COMMUNITY)
+  commentsEnabled     Boolean      @default(true) @map("comments_enabled")
+  geoCell             String?      @map("geo_cell")
+  expiresAt           DateTime?    @map("expires_at")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+  deletedAt           DateTime?    @map("deleted_at")
+
+  user              User              @relation(fields: [userId], references: [id])
+  anonymousIdentity AnonymousIdentity @relation(fields: [anonymousIdentityId], references: [id])
+  community         Community         @relation(fields: [communityId], references: [id])
+  comments          Comment[]
+  reactions         Reaction[]
+  savedPosts        SavedPost[]
+  media             PostMedia[]
+  poll              Poll?
+
+  @@index([communityId, status, createdAt(sort: Desc)])
+  @@index([category, status, createdAt(sort: Desc)])
+  @@map("posts")
+}
+
+model PostMedia {
+  id         String   @id @default(uuid())
+  postId     String   @map("post_id")
+  mediaType  String   @map("media_type")
+  storageKey String   @map("storage_key")
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  post Post @relation(fields: [postId], references: [id])
+
+  @@map("post_media")
+}
+
+model Comment {
+  id                  String        @id @default(uuid())
+  postId              String        @map("post_id")
+  userId              String        @map("user_id")
+  anonymousIdentityId String        @map("anonymous_identity_id")
+  parentCommentId     String?       @map("parent_comment_id")
+  content             String
+  status              CommentStatus @default(ACTIVE)
+  createdAt           DateTime      @default(now()) @map("created_at")
+  deletedAt           DateTime?     @map("deleted_at")
+
+  post              Post              @relation(fields: [postId], references: [id])
+  user              User              @relation(fields: [userId], references: [id])
+  anonymousIdentity AnonymousIdentity @relation(fields: [anonymousIdentityId], references: [id])
+  parentComment     Comment?          @relation("CommentReplies", fields: [parentCommentId], references: [id])
+  replies           Comment[]         @relation("CommentReplies")
+
+  @@index([postId, status, createdAt])
+  @@map("comments")
+}
+
+model Reaction {
+  id           String       @id @default(uuid())
+  postId       String       @map("post_id")
+  userId       String       @map("user_id")
+  reactionType ReactionType @map("reaction_type")
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  post Post @relation(fields: [postId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([postId, userId])
+  @@map("reactions")
+}
+
+model SavedPost {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  postId    String   @map("post_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+  post Post @relation(fields: [postId], references: [id])
+
+  @@unique([userId, postId])
+  @@map("saved_posts")
+}
+
+model Report {
+  id          String       @id @default(uuid())
+  reporterId  String       @map("reporter_id")
+  targetType  String       @map("target_type")
+  targetId    String       @map("target_id")
+  reason      ReportReason
+  description String?
+  status      ReportStatus @default(RECEIVED)
+  priority    String       @default("NORMAL")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  resolvedAt  DateTime?    @map("resolved_at")
+
+  reporter User @relation("ReporterRelation", fields: [reporterId], references: [id])
+
+  @@index([status, priority, createdAt])
+  @@map("reports")
+}
+
+model Block {
+  id        String   @id @default(uuid())
+  blockerId String   @map("blocker_id")
+  blockedId String   @map("blocked_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  blocker User @relation("BlockerRelation", fields: [blockerId], references: [id])
+  blocked User @relation("BlockedRelation", fields: [blockedId], references: [id])
+
+  @@unique([blockerId, blockedId])
+  @@map("blocks")
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  userId      String           @map("user_id")
+  type        NotificationType
+  referenceId String?          @map("reference_id")
+  payload     Json             @default("{}")
+  readAt      DateTime?        @map("read_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model DeviceToken {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  token      String
+  platform   String
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, token])
+  @@map("device_tokens")
+}
+
+model NotificationPreference {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  notificationType String   @map("notification_type")
+  pushEnabled      Boolean  @default(true) @map("push_enabled")
+  inAppEnabled     Boolean  @default(true) @map("in_app_enabled")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, notificationType])
+  @@map("notification_preferences")
+}
+
+model ModerationAction {
+  id          String               @id @default(uuid())
+  moderatorId String               @map("moderator_id")
+  targetType  String               @map("target_type")
+  targetId    String               @map("target_id")
+  actionType  ModerationActionType @map("action_type")
+  reason      String
+  notes       String?
+  createdAt   DateTime             @default(now()) @map("created_at")
+  expiresAt   DateTime?            @map("expires_at")
+
+  appeals ModerationAppeal[]
+
+  @@index([targetType, targetId])
+  @@map("moderation_actions")
+}
+
+model ModerationAppeal {
+  id                 String       @id @default(uuid())
+  userId             String       @map("user_id")
+  moderationActionId String       @map("moderation_action_id")
+  reason             String
+  status             AppealStatus @default(PENDING)
+  reviewerId         String?      @map("reviewer_id")
+  resolutionNotes    String?      @map("resolution_notes")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  resolvedAt         DateTime?    @map("resolved_at")
+
+  user             User             @relation(fields: [userId], references: [id])
+  moderationAction ModerationAction @relation(fields: [moderationActionId], references: [id])
+
+  @@index([status, createdAt])
+  @@map("moderation_appeals")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  actorId      String   @map("actor_id")
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   String   @map("resource_id")
+  beforeState  Json?    @map("before_state")
+  afterState   Json?    @map("after_state")
+  ipAddress    String?  @map("ip_address")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  actor User @relation(fields: [actorId], references: [id])
+
+  @@index([resourceType, resourceId, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+model UserConsent {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  consentType String   @map("consent_type")
+  version     String
+  granted     Boolean
+  grantedAt   DateTime @default(now()) @map("granted_at")
+  ipAddress   String?  @map("ip_address")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("user_consents")
+}
+
+model LocationPreference {
+  id                        String   @id @default(uuid())
+  userId                    String   @unique @map("user_id")
+  selectedCity              String?  @map("selected_city")
+  selectedState             String?  @map("selected_state")
+  geoCell                   String?  @map("geo_cell")
+  locationPermissionGranted Boolean  @default(false) @map("location_permission_granted")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("location_preferences")
+}
+
+model IdempotencyKey {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  key          String
+  resourceType String   @map("resource_type")
+  resourceId   String   @map("resource_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  expiresAt    DateTime @map("expires_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, key])
+  @@map("idempotency_keys")
+}
+
+model Poll {
+  id        String   @id @default(uuid())
+  postId    String   @unique @map("post_id")
+  question  String
+  closesAt  DateTime @map("closes_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post    Post         @relation(fields: [postId], references: [id])
+  options PollOption[]
+  votes   PollVote[]
+
+  @@map("polls")
+}
+
+model PollOption {
+  id         String @id @default(uuid())
+  pollId     String @map("poll_id")
+  optionText String @map("option_text")
+  sortOrder  Int    @default(0) @map("sort_order")
+
+  poll  Poll       @relation(fields: [pollId], references: [id])
+  votes PollVote[]
+
+  @@map("poll_options")
+}
+
+model PollVote {
+  id           String   @id @default(uuid())
+  pollId       String   @map("poll_id")
+  userId       String   @map("user_id")
+  pollOptionId String   @map("poll_option_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  poll       Poll       @relation(fields: [pollId], references: [id])
+  pollOption PollOption @relation(fields: [pollOptionId], references: [id])
+
+  @@unique([pollId, userId])
+  @@map("poll_votes")
+}
+
+model AdminRole {
+  id        String        @id @default(uuid())
+  userId    String        @unique @map("user_id")
+  role      AdminRoleType
+  scope     String?
+  scopeId   String?       @map("scope_id")
+  grantedAt DateTime      @default(now()) @map("granted_at")
+  expiresAt DateTime?     @map("expires_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("admin_roles")
+}

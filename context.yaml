@@ -1,0 +1,45 @@
+product: diriddle
+version: "1.0.0"
+platform: india-anonymous-social
+monorepo:
+  package_manager: pnpm@9
+  orchestrator: turbo@2
+  workspaces:
+    - apps/api
+    - apps/mobile
+    - apps/admin
+    - packages/shared-types
+    - packages/api-contracts
+bounded_contexts:
+  - authentication
+  - identity
+  - location
+  - communities
+  - posts
+  - comments
+  - reactions
+  - feed
+  - notifications
+  - moderation
+  - analytics
+  - admin
+databases:
+  primary: postgresql-postgis
+  cache: redis
+  fallback_test_mode: dev-in-memory
+contracts:
+  rest: packages/api-contracts/openapi.yaml
+  shared_types: packages/shared-types/src/index.ts
+  realtime: socket-io-events-v1
+ports:
+  api: 3000
+  admin: 3001
+  mobile_web: 8081
+  postgres_dev: 5432
+  redis_dev: 6379
+  postgres_test: 5433
+  redis_test: 6380
+windows_testing:
+  launcher_ps1: scripts/start-windows-test.ps1
+  launcher_bat: scripts/start-windows-test.bat
+  npm_script: pnpm run test:windows

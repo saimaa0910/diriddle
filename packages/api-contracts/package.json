@@ -1,0 +1,11 @@
+{
+  "name": "@diriddle/api-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./openapi.yaml",
+  "scripts": {
+    "build": "echo api-contracts ready",
+    "lint": "echo ok",
+    "type-check": "echo ok"
+  }
+}
