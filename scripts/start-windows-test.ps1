@@ -17,6 +17,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
+if ($RepoRoot -cmatch '^[a-z]:') { $RepoRoot = $RepoRoot.Substring(0, 1).ToUpper() + $RepoRoot.Substring(1) }
 Set-Location $RepoRoot
 
 function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
@@ -171,7 +172,7 @@ Write-Step "Launching diriddle services..."
 $apiEnvPrefix = if ($useInMemory) { "`$env:DEV_IN_MEMORY='true'; " } else { "`$env:DEV_IN_MEMORY='false'; " }
 
 $apiCmd    = "Set-Location '$RepoRoot'; $apiEnvPrefix pnpm --filter @diriddle/api dev"
-$mobileCmd = "Set-Location '$RepoRoot'; `$env:EXPO_PUBLIC_API_URL='http://localhost:3000/v1'; pnpm --filter @diriddle/mobile dev"
+$mobileCmd = "Set-Location '$RepoRoot'; `$env:EXPO_PUBLIC_API_URL='http://localhost:3000/v1'; pnpm --filter @diriddle/mobile dev -- --clear"
 $adminCmd  = "Set-Location '$RepoRoot'; `$env:NEXT_PUBLIC_API_URL='http://localhost:3000/v1'; pnpm --filter @diriddle/admin dev"
 
 if ($Jobs) {
