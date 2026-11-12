@@ -1,0 +1,13 @@
+# Default owner for all paths unless overridden below
+* @saimaa0910
+
+# Privacy, Auth, Database & Moderation-Critical Paths
+/apps/api/prisma/ @saimaa0910
+/apps/api/src/auth/ @saimaa0910
+/apps/api/src/identities/ @saimaa0910
+/apps/api/src/location/ @saimaa0910
+/apps/api/src/moderation/ @saimaa0910
+
+# Shared Contracts & CI/CD Governance
+/packages/api-contracts/ @saimaa0910
+/.github/ @saimaa0910

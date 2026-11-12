@@ -9,6 +9,8 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "type-check": "turbo run type-check",
+    "typecheck": "pnpm run type-check",
+    "test:e2e": "pnpm --filter @diriddle/api test:e2e",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
     "test:windows": "powershell -ExecutionPolicy Bypass -File scripts/start-windows-test.ps1"

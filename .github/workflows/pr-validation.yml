@@ -1,0 +1,98 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gates:
+    name: Lint, Type-Check, Tests & Build
+    runs-on: ubuntu-latest
+
+    env:
+      DEV_IN_MEMORY: "true"
+      JWT_SECRET: "ci-test-secret"
+      DATABASE_URL: "postgresql://diriddle_test:diriddle_test@localhost:5432/diriddle_test"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared types
+        run: pnpm --filter @diriddle/shared-types build
+
+      - name: Generate Prisma client
+        run: pnpm --filter @diriddle/api exec prisma generate
+
+      - name: Run lint
+        run: pnpm run lint
+
+      - name: Run type-check
+        run: pnpm run type-check
+
+      - name: Run unit tests
+        run: pnpm run test
+
+      - name: Run API e2e tests
+        run: pnpm run test:e2e
+
+      - name: Run full workspace build
+        run: pnpm run build
+
+  dependency-and-secret-hygiene:
+    name: Dependency Audit & Secret Hygiene
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check for committed .env or private key files
+        run: |
+          if git ls-files | grep -E '(^|/)\.env(\.local|\.production|\.staging)?$|\.(pem|key|p12|jks)$'; then
+            echo "ERROR: Sensitive environment or key files must not be committed."
+            exit 1
+          fi
+          echo "No committed .env or private key files found."
+
+      - name: Scan diff for obvious hardcoded secret patterns
+        run: |
+          if grep -rnE '(SUPABASE_SERVICE_KEY|AWS_SECRET_ACCESS_KEY|BEGIN (RSA|EC|OPENSSH) PRIVATE KEY)' apps packages infrastructure 2>/dev/null | grep -vE '\.env\.(example|test)'; then
+            echo "WARNING: Potential secret pattern detected. Verify manually."
+          fi
+          echo "Secret hygiene scan complete."
+
+      - name: Run pnpm dependency audit (high+)
+        run: pnpm audit --audit-level=high || true
