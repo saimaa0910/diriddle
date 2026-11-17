@@ -20,6 +20,8 @@ export interface CreatePostInput {
     options: string[];
     closes_in_hours?: number;
   };
+  attachment_ids?: string[];
+  attachment_url?: string;
 }
 
 export const postsApi = {
@@ -43,6 +45,15 @@ export const postsApi = {
         is_saved: false,
         comments_enabled: input.comments_enabled,
         visibility: input.visibility,
+        attachments: input.attachment_url || (input.attachment_ids && input.attachment_ids.length > 0)
+          ? [
+              {
+                id: input.attachment_ids?.[0] ?? `att-${Date.now()}`,
+                url: input.attachment_url || 'https://images.unsplash.com/photo-1596178065887-1198b6148b2b?w=800&q=80',
+                mime_type: 'image/jpeg',
+              },
+            ]
+          : undefined,
         poll: input.poll
           ? {
               id: `poll-${Date.now()}`,

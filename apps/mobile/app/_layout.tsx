@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { colors } from '../src/design-system/tokens';
 import { useAuthStore } from '../src/store/auth-store';
 import { useLocationStore } from '../src/store/location-store';
+import { registerForPushNotificationsAsync } from '../src/utils/notifications';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -19,11 +20,19 @@ const queryClient = new QueryClient({
 export default function RootLayout() {
   const hydrateAuth = useAuthStore((s) => s.hydrate);
   const hydrateLocation = useLocationStore((s) => s.hydrate);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const pushNotificationsEnabled = useAuthStore((s) => s.pushNotificationsEnabled);
 
   useEffect(() => {
     void hydrateAuth();
     void hydrateLocation();
   }, [hydrateAuth, hydrateLocation]);
+
+  useEffect(() => {
+    if (accessToken && pushNotificationsEnabled) {
+      void registerForPushNotificationsAsync();
+    }
+  }, [accessToken, pushNotificationsEnabled]);
 
   return (
     <SafeAreaProvider>

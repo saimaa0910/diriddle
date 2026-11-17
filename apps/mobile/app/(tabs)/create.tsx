@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Image,
   ScrollView,
   StyleSheet,
   Switch,
@@ -37,6 +38,8 @@ export default function CreatePostScreen() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
+  const [mediaUrl, setMediaUrl] = useState('');
+  const [showMediaInput, setShowMediaInput] = useState(false);
 
   const { data: communitiesData } = useQuery({
     queryKey: ['communities'],
@@ -49,6 +52,7 @@ export default function CreatePostScreen() {
     mutationFn: () => {
       const isPoll = category === PostCategory.POLL;
       const cleanOptions = pollOptions.map((o) => o.trim()).filter(Boolean);
+      const cleanMediaUrl = mediaUrl.trim();
 
       return postsApi.create({
         community_id: communityId,
@@ -56,6 +60,12 @@ export default function CreatePostScreen() {
         content: content.trim(),
         visibility,
         comments_enabled: commentsEnabled,
+        ...(cleanMediaUrl
+          ? {
+              attachment_url: cleanMediaUrl,
+              attachment_ids: [`att-${Date.now()}`],
+            }
+          : {}),
         ...(isPoll
           ? {
               poll: {
@@ -71,6 +81,8 @@ export default function CreatePostScreen() {
       setContent('');
       setPollQuestion('');
       setPollOptions(['', '']);
+      setMediaUrl('');
+      setShowMediaInput(false);
       setErrorMsg(null);
       void queryClient.invalidateQueries({ queryKey: ['feed'] });
       void queryClient.invalidateQueries({ queryKey: ['my-posts'] });
@@ -215,6 +227,79 @@ export default function CreatePostScreen() {
             )}
           </View>
         )}
+
+        <View style={styles.mediaCard}>
+          <TouchableOpacity
+            style={styles.mediaCardHeader}
+            onPress={() => setShowMediaInput(!showMediaInput)}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+              <Ionicons name="image-outline" size={18} color={mediaUrl ? colors.accent : colors.textSecondary} />
+              <Text style={styles.mediaCardTitle}>
+                {mediaUrl ? 'Photo Attached' : 'Attach Photo / Media (Optional)'}
+              </Text>
+            </View>
+            <Ionicons
+              name={showMediaInput ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          {showMediaInput && (
+            <View style={{ marginTop: spacing.sm }}>
+              <TextInput
+                style={styles.mediaInput}
+                placeholder="Enter image URL (e.g. https://...)"
+                placeholderTextColor={colors.textMuted}
+                value={mediaUrl}
+                onChangeText={setMediaUrl}
+              />
+              <View style={styles.mediaPresetRow}>
+                <TouchableOpacity
+                  style={styles.mediaPresetChip}
+                  onPress={() =>
+                    setMediaUrl(
+                      'https://images.unsplash.com/photo-1596178065887-1198b6148b2b?w=800&q=80'
+                    )
+                  }
+                >
+                  <Text style={styles.mediaPresetText}>Street View</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.mediaPresetChip}
+                  onPress={() =>
+                    setMediaUrl(
+                      'https://images.unsplash.com/photo-1570168007204-dfb528c6958f?w=800&q=80'
+                    )
+                  }
+                >
+                  <Text style={styles.mediaPresetText}>City Landmark</Text>
+                </TouchableOpacity>
+                {mediaUrl ? (
+                  <TouchableOpacity
+                    style={[styles.mediaPresetChip, { borderColor: colors.danger }]}
+                    onPress={() => setMediaUrl('')}
+                  >
+                    <Text style={[styles.mediaPresetText, { color: colors.danger }]}>Clear</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+          )}
+
+          {Boolean(mediaUrl) && (
+            <View style={styles.mediaPreviewContainer}>
+              <Image source={{ uri: mediaUrl }} style={styles.mediaPreviewImage} resizeMode="cover" />
+              <TouchableOpacity
+                style={styles.mediaRemoveBtn}
+                onPress={() => setMediaUrl('')}
+              >
+                <Ionicons name="close-circle" size={24} color={colors.danger} />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
 
         <View style={styles.optionCard}>
           <View style={{ flex: 1 }}>
@@ -471,6 +556,70 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.accent,
     fontWeight: '600',
+  },
+  mediaCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  mediaCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  mediaCardTitle: {
+    ...typography.caption,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  mediaInput: {
+    backgroundColor: colors.card,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 10,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  mediaPresetRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginTop: 4,
+  },
+  mediaPresetChip: {
+    backgroundColor: colors.card,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  mediaPresetText: {
+    ...typography.micro,
+    color: colors.textSecondary,
+  },
+  mediaPreviewContainer: {
+    marginTop: spacing.md,
+    borderRadius: radii.md,
+    overflow: 'hidden',
+    position: 'relative',
+    height: 180,
+    backgroundColor: colors.card,
+  },
+  mediaPreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  mediaRemoveBtn: {
+    position: 'absolute',
+    top: spacing.xs,
+    right: spacing.xs,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 14,
   },
 });
 
