@@ -2,16 +2,20 @@ import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ReactionType } from '@diriddle/shared-types';
+import { postsApi } from '../../src/api/posts.api';
 import { usersApi } from '../../src/api/users.api';
 import { PostCard } from '../../src/components/PostCard';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { EmptyState } from '../../src/components/StateViews';
 import { colors, radii, spacing, typography } from '../../src/design-system/tokens';
 import { useLocationStore } from '../../src/store/location-store';
+import { PostItem } from '../../src/types/models';
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const selectedCity = useLocationStore((s) => s.selectedCity);
   const [tab, setTab] = useState<'identities' | 'posts' | 'saved'>('identities');
 
@@ -28,6 +32,24 @@ export default function ProfileScreen() {
   const { data: savedPosts = [] } = useQuery({
     queryKey: ['saved-posts'],
     queryFn: () => usersApi.getSavedPosts(),
+  });
+
+  const reactMutation = useMutation({
+    mutationFn: ({ post, reaction }: { post: PostItem; reaction: ReactionType }) =>
+      postsApi.toggleReaction(post.id, reaction, post.my_reaction),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['my-posts'] });
+      void queryClient.invalidateQueries({ queryKey: ['saved-posts'] });
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (post: PostItem) => postsApi.toggleSave(post.id, Boolean(post.is_saved)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['saved-posts'] });
+      void queryClient.invalidateQueries({ queryKey: ['my-posts'] });
+      void queryClient.invalidateQueries({ queryKey: ['feed'] });
+    },
   });
 
   return (
@@ -111,8 +133,8 @@ export default function ProfileScreen() {
                   key={post.id}
                   post={post}
                   onPress={() => router.push(`/post/${post.id}`)}
-                  onReact={() => undefined}
-                  onSave={() => undefined}
+                  onReact={(reaction) => reactMutation.mutate({ post, reaction })}
+                  onSave={() => saveMutation.mutate(post)}
                   onReport={() => undefined}
                 />
               ))
@@ -134,8 +156,8 @@ export default function ProfileScreen() {
                   key={post.id}
                   post={post}
                   onPress={() => router.push(`/post/${post.id}`)}
-                  onReact={() => undefined}
-                  onSave={() => undefined}
+                  onReact={(reaction) => reactMutation.mutate({ post, reaction })}
+                  onSave={() => saveMutation.mutate(post)}
                   onReport={() => undefined}
                 />
               ))

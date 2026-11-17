@@ -58,6 +58,12 @@ export default function CommunityDetailScreen() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['community-feed', id] }),
   });
 
+  const voteMutation = useMutation({
+    mutationFn: ({ postId, optionId }: { postId: string; optionId: string }) =>
+      postsApi.votePoll(postId, optionId),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['community-feed', id] }),
+  });
+
   const handleReportSubmit = async (reason: ReportReason, description: string) => {
     if (!reportPostId) return;
     await safetyApi.createReport({
@@ -133,6 +139,7 @@ export default function CommunityDetailScreen() {
               onReact={(reaction) => reactMutation.mutate({ post: item, reaction })}
               onSave={() => saveMutation.mutate(item)}
               onReport={() => setReportPostId(item.id)}
+              onVotePoll={(postId, optionId) => voteMutation.mutate({ postId, optionId })}
             />
           )}
         />

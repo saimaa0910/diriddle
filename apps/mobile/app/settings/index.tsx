@@ -67,6 +67,20 @@ export default function SettingsScreen() {
           <Ionicons name="shield-checkmark-outline" size={20} color={colors.accent} />
         </TouchableOpacity>
 
+        <Text style={styles.sectionTitle}>Legal & Compliance (India)</Text>
+        <View style={styles.legalCard}>
+          <View style={styles.legalRow}>
+            <Ionicons name="document-text-outline" size={16} color={colors.accent} />
+            <Text style={styles.legalTitle}>Terms of Service & Privacy Policy</Text>
+          </View>
+          <Text style={styles.legalBody}>
+            Anonymous, location-based social network for adults (18+). Compliant with India IT (Intermediary Guidelines and Digital Media Ethics Code) Rules 2021 and Digital Personal Data Protection (DPDP) Act 2023.
+          </Text>
+          <Text style={styles.legalContact}>
+            Resident Grievance Officer: grievance@diriddle.com
+          </Text>
+        </View>
+
         <Text style={styles.sectionTitle}>Session</Text>
 
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
@@ -127,6 +141,35 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '400',
     marginTop: 2,
+  },
+  legalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  legalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: 4,
+  },
+  legalTitle: {
+    ...typography.bodyMedium,
+    color: colors.textPrimary,
+    fontWeight: '600',
+  },
+  legalBody: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginBottom: 6,
+  },
+  legalContact: {
+    ...typography.micro,
+    color: colors.accent,
+    fontWeight: '600',
   },
   logoutBtn: {
     flexDirection: 'row',

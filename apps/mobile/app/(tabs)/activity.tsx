@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,7 +9,9 @@ import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { EmptyState, ErrorBanner } from '../../src/components/StateViews';
 import { colors, radii, spacing, typography } from '../../src/design-system/tokens';
 import { userMessageForCode } from '../../src/error-codes/user-message-for-code';
+import { useAuthStore } from '../../src/store/auth-store';
 import { NotificationItem } from '../../src/types/models';
+import { connectCommunitySocket } from '../../src/utils/realtime';
 import { formatRelativeTime } from '../../src/utils/time';
 
 function iconForType(type: NotificationType): keyof typeof Ionicons.glyphMap {
@@ -46,6 +48,22 @@ export default function ActivityScreen() {
 
   const notifications = data?.data ?? [];
   const unreadCount = notifications.filter((n) => !n.read_at).length;
+  const accessToken = useAuthStore((s) => s.accessToken);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    const socket = connectCommunitySocket(accessToken, 'global-notifications');
+    if (!socket) return;
+
+    const onNotificationNew = () => {
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    };
+
+    socket.on('notification:new', onNotificationNew);
+    return () => {
+      socket.off('notification:new', onNotificationNew);
+    };
+  }, [accessToken, queryClient]);
 
   const handleOpen = (item: NotificationItem) => {
     if (!item.read_at) {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -19,13 +19,16 @@ import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { EmptyState, ErrorBanner, PostSkeleton } from '../../src/components/StateViews';
 import { colors, radii, spacing, typography } from '../../src/design-system/tokens';
 import { userMessageForCode } from '../../src/error-codes/user-message-for-code';
+import { useAuthStore } from '../../src/store/auth-store';
 import { REACTION_OPTIONS } from '../../src/types/models';
+import { connectCommunitySocket } from '../../src/utils/realtime';
 import { formatRelativeTime } from '../../src/utils/time';
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const accessToken = useAuthStore((s) => s.accessToken);
 
   const [commentText, setCommentText] = useState('');
   const [replyTo, setReplyTo] = useState<{ id: string; author: string } | null>(null);
@@ -50,6 +53,29 @@ export default function PostDetailScreen() {
     queryFn: () => commentsApi.list(id),
     enabled: Boolean(id),
   });
+
+  useEffect(() => {
+    if (!post?.community_id) return;
+    const socket = connectCommunitySocket(accessToken, post.community_id);
+    if (!socket) return;
+
+    const onCommentCreated = () => {
+      void queryClient.invalidateQueries({ queryKey: ['comments', id] });
+      void queryClient.invalidateQueries({ queryKey: ['post', id] });
+    };
+
+    const onReactionUpdated = () => {
+      void queryClient.invalidateQueries({ queryKey: ['post', id] });
+    };
+
+    socket.on('comment:created', onCommentCreated);
+    socket.on('reaction:updated', onReactionUpdated);
+
+    return () => {
+      socket.off('comment:created', onCommentCreated);
+      socket.off('reaction:updated', onReactionUpdated);
+    };
+  }, [accessToken, post?.community_id, id, queryClient]);
 
   const reactMutation = useMutation({
     mutationFn: (reaction: ReactionType) => {
