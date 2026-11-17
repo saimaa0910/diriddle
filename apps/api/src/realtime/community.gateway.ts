@@ -34,7 +34,10 @@ export class CommunityGateway implements OnGatewayConnection, OnGatewayDisconnec
         return;
       }
 
-      const secret = this.configService.get<string>('JWT_SECRET', 'dev-secret');
+      const secret = this.configService.get<string>(
+        'JWT_SECRET',
+        'dev-secret-min-32-chars-local-only',
+      );
       const payload = await this.jwtService.verifyAsync<{ sub: string; uid?: string }>(token, {
         secret,
       });
@@ -108,6 +111,10 @@ export class CommunityGateway implements OnGatewayConnection, OnGatewayDisconnec
     this.server.to(`community:${communityId}`).emit('post:created', post);
   }
 
+  broadcastNewPost(communityId: string, post: unknown): void {
+    this.broadcastPostCreated(communityId, post);
+  }
+
   broadcastCommentCreated(communityId: string, comment: unknown): void {
     if (!this.server) return;
     this.server.to(`community:${communityId}`).emit('comment:created', comment);
@@ -135,3 +142,4 @@ export class CommunityGateway implements OnGatewayConnection, OnGatewayDisconnec
     return null;
   }
 }
+

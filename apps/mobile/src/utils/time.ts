@@ -11,3 +11,4 @@ export function formatRelativeTime(isoDate: string): string {
   if (diffDay < 7) return `${diffDay}d ago`;
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
+

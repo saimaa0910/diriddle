@@ -41,3 +41,4 @@ export function shouldUseDemoFallback(error: unknown): boolean {
   }
   return false;
 }
+

@@ -147,6 +147,44 @@ paths:
         '401':
           $ref: '#/components/responses/ErrorResponse'
 
+  /auth/verify-age:
+    post:
+      tags: [Auth]
+      summary: Confirm 18+ age eligibility and record legal consents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                confirmed:
+                  type: boolean
+                confirmed_18_plus:
+                  type: boolean
+                accepted_terms:
+                  type: boolean
+                accepted_privacy:
+                  type: boolean
+                policy_version:
+                  type: string
+      responses:
+        '200':
+          description: Age verification status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  age_verified:
+                    type: boolean
+                  policy_version:
+                    type: string
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
   /users/me:
     get:
       tags: [Users]
@@ -387,6 +425,33 @@ paths:
                           type: string
                         post_count:
                           type: integer
+
+  /feed/category/{category}:
+    get:
+      tags: [Feed]
+      summary: Get feed filtered by post category
+      parameters:
+        - name: category
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/PostCategory'
+        - name: community_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Category feed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPostResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
 
   /posts:
     post:
@@ -662,6 +727,43 @@ paths:
         '400':
           $ref: '#/components/responses/ErrorResponse'
 
+  /blocks/by-content:
+    post:
+      tags: [Safety]
+      summary: Block author of content anonymously
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_type, target_id]
+              properties:
+                target_type:
+                  type: string
+                  enum: [POST, COMMENT]
+                target_id:
+                  type: string
+                  format: uuid
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Content author blocked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
   /blocks/{userId}:
     delete:
       tags: [Safety]
@@ -726,12 +828,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaginatedNotificationResponse'
 
-  /notifications/{notificationId}/read:
+  /notifications/unread-count:
+    get:
+      tags: [Notifications]
+      summary: Get unread notification count
+      responses:
+        '200':
+          description: Unread notification count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+
+  /notifications/{id}/read:
     patch:
       tags: [Notifications]
       summary: Mark a single notification as read
       parameters:
-        - name: notificationId
+        - name: id
           in: path
           required: true
           schema:
@@ -744,6 +861,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotificationDto'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
 
   /notifications/read-all:
     post:
@@ -787,6 +906,54 @@ paths:
       responses:
         '200':
           description: Updated preferences
+
+  /admin/auth/login:
+    post:
+      tags: [Admin]
+      summary: Admin authentication login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                phone:
+                  type: string
+                identifier:
+                  type: string
+                password:
+                  type: string
+                otp:
+                  type: string
+      responses:
+        '200':
+          description: Admin session tokens
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  token_type:
+                    type: string
+                  expires_in:
+                    type: integer
+                  admin:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      role:
+                        type: string
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
 
   /admin/overview:
     get:
@@ -902,6 +1069,110 @@ paths:
                     type: [string, 'null']
                   has_more:
                     type: boolean
+
+  /admin/communities:
+    post:
+      tags: [Admin]
+      summary: Create a new community
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, type]
+              properties:
+                name:
+                  type: string
+                slug:
+                  type: string
+                type:
+                  $ref: '#/components/schemas/CommunityType'
+                city:
+                  type: string
+                state:
+                  type: string
+      responses:
+        '201':
+          description: Community created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunityDto'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /admin/posts/{id}/status:
+    patch:
+      tags: [Admin]
+      summary: Update post status by administrator
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  $ref: '#/components/schemas/PostStatus'
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Post status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostDto'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /admin/comments/{id}/status:
+    patch:
+      tags: [Admin]
+      summary: Update comment status by administrator
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  $ref: '#/components/schemas/CommentStatus'
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Comment status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentDto'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
 
 components:
   securitySchemes:

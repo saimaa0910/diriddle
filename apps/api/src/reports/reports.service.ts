@@ -4,10 +4,12 @@ import { PrismaService } from '../database/prisma.service';
 
 export interface CreateReportInput {
   reporterId: string;
-  target_type: 'POST' | 'COMMENT' | 'USER';
+  target_type: 'POST' | 'COMMENT' | 'USER' | 'COMMUNITY' | 'IDENTITY' | string;
   target_id: string;
   reason: ReportReason;
   description?: string;
+  community_id?: string;
+  evidence_urls?: string[];
 }
 
 @Injectable()
@@ -39,6 +41,8 @@ export class ReportsService {
         targetId: input.target_id,
         reason: input.reason,
         description: input.description ?? null,
+        communityId: input.community_id ?? null,
+        evidenceUrls: input.evidence_urls ?? [],
         status: 'RECEIVED',
         priority,
       },
@@ -78,3 +82,4 @@ export class ReportsService {
     return 'NORMAL';
   }
 }
+

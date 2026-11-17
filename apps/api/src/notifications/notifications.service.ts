@@ -49,11 +49,29 @@ export class NotificationsService {
     };
   }
 
-  async markRead(userId: string, notificationId: string) {
-    const existing = await this.prisma.notification.findUnique({
-      where: { id: notificationId },
+  async findAll(userId: string) {
+    return this.prisma.notification.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
     });
-    if (!existing || existing.userId !== userId) {
+  }
+
+  async getUnreadCount(userId: string): Promise<number> {
+    return this.prisma.notification.count({
+      where: { userId, readAt: null },
+    });
+  }
+
+  async markRead(idOrUserId: string, userIdOrId: string) {
+    const notification = await this.prisma.notification.findFirst({
+      where: {
+        OR: [
+          { id: idOrUserId, userId: userIdOrId },
+          { id: userIdOrId, userId: idOrUserId },
+        ],
+      },
+    });
+    if (!notification) {
       throw new NotFoundException({
         error: 'NOTIFICATION_NOT_FOUND',
         message: 'Notification not found',
@@ -61,8 +79,8 @@ export class NotificationsService {
     }
 
     const updated = await this.prisma.notification.update({
-      where: { id: notificationId },
-      data: { readAt: existing.readAt ?? new Date() },
+      where: { id: notification.id },
+      data: { readAt: new Date() },
     });
 
     return {
@@ -162,3 +180,4 @@ export class NotificationsService {
     return dto;
   }
 }
+

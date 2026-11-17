@@ -269,3 +269,4 @@ const styles = StyleSheet.create({
     color: colors.accent,
   },
 });
+

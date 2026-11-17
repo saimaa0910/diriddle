@@ -8,6 +8,7 @@ export enum PostCategory {
   NEIGHBORHOOD = 'NEIGHBORHOOD',
   LOCAL_ALERT = 'LOCAL_ALERT',
   POLL = 'POLL',
+  GENERAL = 'GENERAL',
 }
 
 export enum PostStatus {
@@ -25,8 +26,11 @@ export enum CommentStatus {
 }
 
 export enum UserStatus {
+  PENDING_VERIFICATION = 'PENDING_VERIFICATION',
   ACTIVE = 'ACTIVE',
+  DEACTIVATED = 'DEACTIVATED',
   SUSPENDED = 'SUSPENDED',
+  DELETION_PENDING = 'DELETION_PENDING',
   DELETED = 'DELETED',
 }
 
@@ -91,21 +95,31 @@ export enum NotificationType {
   REACTION = 'REACTION',
   COMMUNITY_POST = 'COMMUNITY_POST',
   SYSTEM = 'SYSTEM',
+  MENTION = 'MENTION',
 }
 
 export enum Visibility {
   COMMUNITY = 'COMMUNITY',
   PUBLIC = 'PUBLIC',
+  SELECTED_COMMUNITIES = 'SELECTED_COMMUNITIES',
+  PRIVATE = 'PRIVATE',
 }
 
-export enum AdminRoleType {
-  SUPER_ADMIN = 'SUPER_ADMIN',
-  MODERATION_LEAD = 'MODERATION_LEAD',
-  MODERATOR = 'MODERATOR',
-  TRUST_SAFETY = 'TRUST_SAFETY',
-  COMMUNITY_MANAGER = 'COMMUNITY_MANAGER',
-  ANALYST = 'ANALYST',
+export enum AuthProvider {
+  PHONE = 'PHONE',
+  EMAIL = 'EMAIL',
+  GOOGLE = 'GOOGLE',
+  APPLE = 'APPLE',
 }
+
+export type AdminRoleType = 'SUPER_ADMIN' | 'ADMIN' | 'MODERATOR' | 'ANALYST' | 'TRUST_SAFETY_LEAD';
+export const AdminRoleType = {
+  SUPER_ADMIN: 'SUPER_ADMIN',
+  ADMIN: 'ADMIN',
+  MODERATOR: 'MODERATOR',
+  ANALYST: 'ANALYST',
+  TRUST_SAFETY_LEAD: 'TRUST_SAFETY_LEAD',
+} as const;
 
 export interface PaginatedResponse<T> {
   data: T[];
@@ -129,6 +143,7 @@ export interface AnonymousIdentityDto {
   community_id: string | null;
   community_name?: string;
   display_code: string;
+  is_global?: boolean;
   created_at: string;
 }
 
@@ -148,6 +163,8 @@ export interface PostDto {
   reaction_counts?: ReactionCounts;
   user_reaction?: ReactionType | null;
   is_saved?: boolean;
+  is_pinned?: boolean;
+  is_draft?: boolean;
   expires_at?: string | null;
   created_at: string;
   updated_at?: string;
@@ -160,6 +177,7 @@ export interface CommentDto {
   anonymous_name: string;
   content: string;
   status: CommentStatus;
+  is_own?: boolean;
   created_at: string;
   replies?: CommentDto[];
 }
@@ -175,6 +193,7 @@ export interface CommunityDto {
   member_count?: number;
   post_count?: number;
   is_member?: boolean;
+  is_private?: boolean;
   created_at: string;
 }
 
@@ -186,6 +205,30 @@ export interface UserProfileDto {
   selected_state?: string | null;
   location_permission_granted?: boolean;
   identities_count?: number;
+  profile?: {
+    display_name?: string | null;
+    avatar_seed?: string | null;
+    bio?: string | null;
+    interests?: string[];
+    preferred_language?: string;
+  };
+  created_at: string;
+}
+
+export interface CityDto {
+  name: string;
+  slug: string;
+  state?: string | null;
+  geo_cell?: string;
+  is_active?: boolean;
+}
+
+export interface SessionDto {
+  id: string;
+  device_id?: string | null;
+  device_name?: string | null;
+  platform?: string | null;
+  last_active_at: string;
   created_at: string;
 }
 
@@ -204,6 +247,9 @@ export interface CreatePostPayload {
   content: string;
   visibility?: Visibility;
   comments_enabled?: boolean;
+  is_draft?: boolean;
+  attachment_ids?: string[];
+  audience_community_ids?: string[];
   idempotency_key?: string;
 }
 

@@ -36,3 +36,4 @@ describe('useAuthStore', () => {
     expect(state.hasSeenOnboarding).toBe(true);
   });
 });
+

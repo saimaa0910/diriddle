@@ -27,6 +27,33 @@ const DELEGATE_NAMES = [
   'pollOption',
   'pollVote',
   'adminRole',
+  'userProfile',
+  'authIdentity',
+  'session',
+  'loginHistory',
+  'deletionRequest',
+  'ageVerification',
+  'country',
+  'state',
+  'city',
+  'spatialCell',
+  'temporaryUserGps',
+  'communityRule',
+  'communityBan',
+  'joinRequest',
+  'communityRole',
+  'identityHistory',
+  'postAudience',
+  'attachment',
+  'hashtag',
+  'postHashtag',
+  'mention',
+  'trendingScore',
+  'searchHistory',
+  'identityAccessLog',
+  'retentionPolicy',
+  'otpChallenge',
+  'commentReaction',
 ] as const;
 
 @Injectable()
@@ -94,3 +121,4 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     }
   }
 }
+

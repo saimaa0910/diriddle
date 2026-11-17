@@ -16,3 +16,4 @@ export class VerifyOtpDto {
   @IsEnum(['phone', 'email'])
   type!: 'phone' | 'email';
 }
+

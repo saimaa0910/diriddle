@@ -1,5 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../database/prisma.service';
+import { CityService } from './city.service';
 
 export interface IndiaCity {
   name: string;
@@ -27,9 +29,31 @@ const MIN_K_ANONYMITY_USERS = 20;
 
 @Injectable()
 export class LocationService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(LocationService.name);
 
-  getIndiaCities() {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
+    private readonly cityService: CityService,
+  ) {}
+
+  async getIndiaCities() {
+    try {
+      const dbCities = await this.cityService.listActiveCities();
+      if (dbCities.data.length > 0) {
+        return {
+          data: dbCities.data.map((c) => ({
+            name: c.name,
+            slug: c.slug,
+            state: null,
+            geo_cell: `h3_in_${c.slug}_01`,
+          })),
+        };
+      }
+    } catch {
+      // Fallback to static list
+    }
+
     return {
       data: INDIA_CITIES.map((c) => ({
         name: c.name,
@@ -45,7 +69,7 @@ export class LocationService {
     nearest_city: IndiaCity;
     granularity: 'CELL_5KM' | 'CITY_FALLBACK';
   } {
-    // Snap raw coordinates to a ~5km (0.05 deg) coarse grid cell; never persist exact lat/lng
+    // Snap raw coordinates to a ~5km (0.05 deg) coarse grid cell; NEVER persist exact coordinates
     const gridLat = Math.round(lat * 20) / 20;
     const gridLng = Math.round(lng * 20) / 20;
     const geoCell = `h3_in_${gridLat.toFixed(2)}_${gridLng.toFixed(2)}`;
@@ -75,6 +99,134 @@ export class LocationService {
       min_threshold: MIN_K_ANONYMITY_USERS,
       allow_neighborhood_precision: meetsThreshold,
       effective_scope: meetsThreshold ? 'NEIGHBORHOOD' : 'CITY',
+    };
+  }
+
+  async storeTemporaryGps(userId: string, lat: number, lng: number) {
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      throw new BadRequestException({
+        error: 'INVALID_COORDINATES',
+        message: 'Coordinates must be valid latitude [-90, 90] and longitude [-180, 180]',
+      });
+    }
+
+    const isProd = process.env.NODE_ENV === 'production';
+    const retentionSecStr = this.configService.get<string>('GPS_RETENTION_SECONDS');
+    if (isProd && !retentionSecStr) {
+      throw new Error('FATAL: GPS_RETENTION_SECONDS must be explicitly configured in production');
+    }
+    const retentionSec = retentionSecStr ? Number(retentionSecStr) : 3600;
+
+    const coarse = this.latLngToCoarseGeoCell(lat, lng);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + retentionSec * 1000);
+
+    // Impossible travel & location spoofing anomaly detection
+    const previousGps = await this.prisma.temporaryUserGps.findUnique({ where: { userId } });
+    let isAnomaly = false;
+    let anomalyReason: string | undefined;
+
+    if (previousGps && previousGps.capturedAt) {
+      const timeDeltaHours = (now.getTime() - new Date(previousGps.capturedAt).getTime()) / (1000 * 3600);
+      if (timeDeltaHours < 4) {
+        const R = 6371; // Earth radius in km
+        const dLat = (lat - previousGps.lat) * (Math.PI / 180);
+        const dLng = (lng - previousGps.lng) * (Math.PI / 180);
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(previousGps.lat * (Math.PI / 180)) *
+            Math.cos(lat * (Math.PI / 180)) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distanceKm = R * c;
+        const effectiveHours = Math.max(timeDeltaHours, 0.0001);
+        const calculatedSpeed = distanceKm / effectiveHours;
+
+        if (distanceKm > 50 && calculatedSpeed > 900) {
+          isAnomaly = true;
+          anomalyReason = 'IMPOSSIBLE_TRAVEL_SPEED';
+          this.logger.warn(`Impossible travel anomaly detected: ${calculatedSpeed.toFixed(0)} km/h across ${distanceKm.toFixed(0)} km in ${timeDeltaHours.toFixed(2)} hrs`);
+        }
+      }
+    }
+
+    await this.prisma.temporaryUserGps.upsert({
+      where: { userId },
+      create: {
+        userId,
+        lat,
+        lng,
+        geoCell: coarse.geo_cell,
+        capturedAt: now,
+        expiresAt,
+      },
+      update: {
+        lat,
+        lng,
+        geoCell: coarse.geo_cell,
+        capturedAt: now,
+        expiresAt,
+      },
+    });
+
+    this.logger.debug(`Stored temporary GPS for user (expires in ${retentionSec}s)`);
+    return {
+      geo_cell: coarse.geo_cell,
+      nearest_city: coarse.nearest_city.name,
+      expires_in_seconds: retentionSec,
+      is_anomaly: isAnomaly,
+      ...(anomalyReason ? { anomaly_reason: anomalyReason } : {}),
+    };
+  }
+
+  async clearTemporaryGps(userId: string) {
+    await this.prisma.temporaryUserGps.deleteMany({ where: { userId } });
+    return { cleared: true };
+  }
+
+  async resolveUserLocation(userId: string): Promise<{
+    geoCell: string;
+    citySlug: string;
+    cityName: string;
+    source: 'GPS' | 'PREFERENCE' | 'DEFAULT';
+  }> {
+    const now = new Date();
+    const gps = await this.prisma.temporaryUserGps.findUnique({
+      where: { userId },
+    });
+
+    if (gps && gps.expiresAt > now) {
+      const coarse = this.latLngToCoarseGeoCell(gps.lat, gps.lng);
+      return {
+        geoCell: coarse.geo_cell,
+        citySlug: coarse.nearest_city.slug,
+        cityName: coarse.nearest_city.name,
+        source: 'GPS',
+      };
+    }
+
+    const pref = await this.prisma.locationPreference.findUnique({
+      where: { userId },
+    });
+
+    if (pref?.selectedCity) {
+      const match = INDIA_CITIES.find(
+        (c) => c.name.toLowerCase() === pref.selectedCity?.toLowerCase(),
+      );
+      return {
+        geoCell: pref.geoCell ?? match?.geoCell ?? 'h3_in_blr_01',
+        citySlug: match?.slug ?? 'bengaluru',
+        cityName: pref.selectedCity,
+        source: 'PREFERENCE',
+      };
+    }
+
+    return {
+      geoCell: 'h3_in_blr_01',
+      citySlug: 'bengaluru',
+      cityName: 'Bengaluru',
+      source: 'DEFAULT',
     };
   }
 

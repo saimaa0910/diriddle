@@ -58,10 +58,23 @@ export class NotificationsController {
     });
   }
 
-  @Patch(':notificationId/read')
+  @Get('unread-count')
+  @ApiOperation({ summary: 'Get unread notification count' })
+  async getUnreadCount(@CurrentUser() user: RequestUser) {
+    const count = await this.notificationsService.getUnreadCount(user.id);
+    return { count };
+  }
+
+  @Patch(':id/read')
   @ApiOperation({ summary: 'Mark a notification as read' })
-  markRead(@Param('notificationId') id: string, @CurrentUser() user: RequestUser) {
-    return this.notificationsService.markRead(user.id, id);
+  markRead(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.notificationsService.markRead(id, user.id);
+  }
+
+  @Post(':id/read')
+  @ApiOperation({ summary: 'Mark a notification as read (POST alias)' })
+  markReadPost(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.notificationsService.markRead(id, user.id);
   }
 
   @Post('read-all')
@@ -99,3 +112,4 @@ export class NotificationsController {
     return this.notificationsService.removeDeviceToken(user.id, token);
   }
 }
+

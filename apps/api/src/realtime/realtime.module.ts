@@ -8,7 +8,7 @@ import { CommunityGateway } from './community.gateway';
   imports: [
     JwtModule.registerAsync({
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET', 'dev-secret'),
+        secret: config.get<string>('JWT_SECRET', 'dev-secret-min-32-chars-local-only'),
       }),
       inject: [ConfigService],
     }),
@@ -17,3 +17,4 @@ import { CommunityGateway } from './community.gateway';
   exports: [CommunityGateway],
 })
 export class RealtimeModule {}
+

@@ -17,3 +17,4 @@ jest.mock('@expo/vector-icons', () => {
     Ionicons: ({ name }: { name: string }) => React.createElement(Text, null, name),
   };
 });
+

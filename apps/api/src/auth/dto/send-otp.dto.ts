@@ -11,3 +11,4 @@ export class SendOtpDto {
   @IsEnum(['phone', 'email'])
   type!: 'phone' | 'email';
 }
+

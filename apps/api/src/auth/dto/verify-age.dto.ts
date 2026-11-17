@@ -1,18 +1,26 @@
 import { IsBoolean, IsOptional, IsString } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class VerifyAgeDto {
-  @ApiProperty({ example: true })
+  @ApiPropertyOptional({ example: true, description: 'Shorthand confirmation flag for mobile clients' })
   @IsBoolean()
-  confirmed_18_plus!: boolean;
+  @IsOptional()
+  confirmed?: boolean;
 
-  @ApiProperty({ example: true })
+  @ApiPropertyOptional({ example: true, description: 'Explicit confirmation of 18+ age' })
   @IsBoolean()
-  accepted_terms!: boolean;
+  @IsOptional()
+  confirmed_18_plus?: boolean;
 
-  @ApiProperty({ example: true })
+  @ApiPropertyOptional({ example: true, description: 'Acceptance of Terms of Service' })
   @IsBoolean()
-  accepted_privacy!: boolean;
+  @IsOptional()
+  accepted_terms?: boolean;
+
+  @ApiPropertyOptional({ example: true, description: 'Acceptance of Privacy Policy' })
+  @IsBoolean()
+  @IsOptional()
+  accepted_privacy?: boolean;
 
   @ApiPropertyOptional({ example: '1.0' })
   @IsString()

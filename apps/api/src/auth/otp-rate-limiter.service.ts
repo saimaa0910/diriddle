@@ -1,132 +1,93 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 
-interface OtpBucket {
+export class TooManyRequestsException extends HttpException {
+  constructor(response: string | Record<string, any>) {
+    super(response, HttpStatus.TOO_MANY_REQUESTS);
+  }
+}
+
+interface OtpEntry {
   code: string;
   expiresAt: number;
+  attempts: number;
   lastSentAt: number;
-  sendCount: number;
-  windowStart: number;
-  failedAttempts: number;
-  lockedUntil: number;
 }
 
 @Injectable()
 export class OtpRateLimiterService {
-  private readonly buckets = new Map<string, OtpBucket>();
-  private readonly maxSendsPerWindow = 5;
-  private readonly windowMs = 15 * 60 * 1000;
-  private readonly cooldownMs = 30 * 1000;
-  private readonly otpTtlMs = 5 * 60 * 1000;
-  private readonly maxFailedAttempts = 5;
-  private readonly lockDurationMs = 15 * 60 * 1000;
+  private readonly logger = new Logger(OtpRateLimiterService.name);
+  private readonly store = new Map<string, OtpEntry>();
+
+  private readonly OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
+  private readonly COOLDOWN_MS = 60 * 1000; // 1 minute between sends
+  private readonly MAX_VERIFY_ATTEMPTS = 5;
 
   issueOtp(key: string, bypassCooldown = false): { code: string; expiresInSeconds: number } {
     const now = Date.now();
-    const existing = this.buckets.get(key);
+    const existing = this.store.get(key);
 
-    if (existing) {
-      if (existing.lockedUntil > now) {
-        throw new HttpException(
-          {
-            error: 'OTP_TEMP_LOCKED',
-            message: 'Too many failed attempts. Please try again later.',
-          },
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
-      }
-
-      if (!bypassCooldown && now - existing.lastSentAt < this.cooldownMs) {
-        throw new HttpException(
-          {
-            error: 'OTP_COOLDOWN_ACTIVE',
-            message: 'Please wait before requesting another OTP.',
-          },
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
-      }
-
-      const inWindow = now - existing.windowStart < this.windowMs;
-      const nextCount = inWindow ? existing.sendCount + 1 : 1;
-      if (nextCount > this.maxSendsPerWindow) {
-        throw new HttpException(
-          {
-            error: 'OTP_RATE_LIMIT_EXCEEDED',
-            message: 'Maximum OTP requests reached. Please try again later.',
-          },
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
-      }
-
-      const code = this.generateCode();
-      this.buckets.set(key, {
-        code,
-        expiresAt: now + this.otpTtlMs,
-        lastSentAt: now,
-        sendCount: nextCount,
-        windowStart: inWindow ? existing.windowStart : now,
-        failedAttempts: 0,
-        lockedUntil: 0,
+    if (!bypassCooldown && existing && now - existing.lastSentAt < this.COOLDOWN_MS) {
+      const waitSec = Math.ceil((this.COOLDOWN_MS - (now - existing.lastSentAt)) / 1000);
+      throw new TooManyRequestsException({
+        error: 'OTP_RATE_LIMITED',
+        message: `Please wait ${waitSec} seconds before requesting another OTP`,
+        retry_after: waitSec,
       });
-      return { code, expiresInSeconds: Math.floor(this.otpTtlMs / 1000) };
     }
 
-    const code = this.generateCode();
-    this.buckets.set(key, {
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    this.store.set(key, {
       code,
-      expiresAt: now + this.otpTtlMs,
+      expiresAt: now + this.OTP_TTL_MS,
+      attempts: 0,
       lastSentAt: now,
-      sendCount: 1,
-      windowStart: now,
-      failedAttempts: 0,
-      lockedUntil: 0,
     });
-    return { code, expiresInSeconds: Math.floor(this.otpTtlMs / 1000) };
+
+    this.logger.debug(`OTP issued for key hash: ${key.substring(0, 8)}***`);
+    return { code, expiresInSeconds: this.OTP_TTL_MS / 1000 };
   }
 
-  verifyOtp(key: string, candidate: string, allowDevOtp: boolean): boolean {
+  verifyOtp(key: string, submitted: string, allowDevOtp: boolean): boolean {
     const now = Date.now();
-    const bucket = this.buckets.get(key);
+    const entry = this.store.get(key);
 
-    if (bucket && bucket.lockedUntil > now) {
-      throw new HttpException(
-        {
-          error: 'OTP_TEMP_LOCKED',
-          message: 'Too many failed verification attempts. Try again later.',
-        },
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-
-    if (allowDevOtp && candidate === '123456') {
-      this.buckets.delete(key);
-      return true;
-    }
-
-    if (!bucket || bucket.expiresAt < now) {
+    if (entry && entry.attempts >= this.MAX_VERIFY_ATTEMPTS) {
+      this.store.delete(key);
       return false;
     }
 
-    if (bucket.code === candidate) {
-      this.buckets.delete(key);
+    if (allowDevOtp && submitted === '123456') {
+      this.logger.warn('Dev OTP accepted — ensure ALLOW_DEV_OTP=false in production');
       return true;
     }
 
-    bucket.failedAttempts += 1;
-    if (bucket.failedAttempts >= this.maxFailedAttempts) {
-      bucket.lockedUntil = now + this.lockDurationMs;
+    if (!entry || entry.expiresAt < now) {
+      return false;
     }
-    return false;
+
+    entry.attempts += 1;
+    if (entry.attempts > this.MAX_VERIFY_ATTEMPTS) {
+      this.store.delete(key);
+      return false;
+    }
+
+    if (entry.code !== submitted) {
+      return false;
+    }
+
+    this.store.delete(key); // Consume on success
+    return true;
+  }
+
+  invalidate(key: string): void {
+    this.store.delete(key);
   }
 
   clear(key?: string): void {
     if (key) {
-      this.buckets.delete(key);
+      this.store.delete(key);
     } else {
-      this.buckets.clear();
+      this.store.clear();
     }
-  }
-
-  private generateCode(): string {
-    return String(Math.floor(100000 + Math.random() * 900000));
   }
 }

@@ -77,3 +77,4 @@ export async function detectApproximateCity(): Promise<{
     return { granted: false, city: null };
   }
 }
+

@@ -9,3 +9,4 @@ import { ModerationService } from './moderation.service';
   exports: [ModerationService],
 })
 export class ModerationModule {}
+

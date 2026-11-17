@@ -71,3 +71,4 @@ export function getActiveCityFallback(selectedCity: string | null): IndiaCity {
     INDIA_CITIES[2] // Bengaluru default
   );
 }
+

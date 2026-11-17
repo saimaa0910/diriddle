@@ -282,3 +282,4 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
 });
+

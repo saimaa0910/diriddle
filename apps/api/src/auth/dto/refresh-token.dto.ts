@@ -7,3 +7,4 @@ export class RefreshTokenDto {
   @IsNotEmpty()
   refresh_token!: string;
 }
+

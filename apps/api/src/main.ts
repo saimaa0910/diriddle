@@ -5,8 +5,22 @@ import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
+import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
+import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor';
+import { TimeoutInterceptor } from './common/interceptors/timeout.interceptor';
 
 async function bootstrap() {
+  if (process.env.NODE_ENV === 'production') {
+    const jwtSecret = process.env.JWT_SECRET;
+    const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET;
+    if (!jwtSecret || jwtSecret.length < 32) {
+      throw new Error('FATAL: JWT_SECRET must be set and >= 32 characters in production');
+    }
+    if (!jwtRefreshSecret || jwtRefreshSecret.length < 32) {
+      throw new Error('FATAL: JWT_REFRESH_SECRET must be set and >= 32 characters in production');
+    }
+  }
+
   const app = await NestFactory.create(AppModule);
 
   const corsOrigins = process.env.CORS_ORIGINS
@@ -15,6 +29,11 @@ async function bootstrap() {
 
   app.use(helmet());
   app.use(compression());
+  app.use(new CorrelationIdMiddleware().use);
+  app.useGlobalInterceptors(
+    new IdempotencyInterceptor(),
+    new TimeoutInterceptor(30000),
+  );
   app.enableCors({
     origin: corsOrigins,
     credentials: true,
@@ -45,3 +64,4 @@ async function bootstrap() {
 }
 
 bootstrap();
+

@@ -1,0 +1,19 @@
+name,color,description
+priority:P0,b60205,Critical blocker or launch-required item
+priority:P1,d93f0b,High priority MVP feature or fix
+priority:P2,fbca04,Medium priority post-MVP or polish
+priority:P3,0e8a16,Low priority future enhancement
+type:epic,5319e7,Parent epic grouping related stories and tasks
+type:story,1d76db,User-facing feature story
+type:task,0052cc,Engineering or operational task
+type:bug,d73a4a,Defect or contract mismatch
+type:research,c5def5,Spike or technical investigation
+type:tech-debt,fef2c0,Code quality or architectural cleanup
+area:backend,006b75,NestJS API and services
+area:mobile,1d76db,Expo React Native and Web app
+area:admin,5319e7,Next.js Moderation and Admin console
+area:database,0052cc,PostgreSQL PostGIS Prisma and Redis
+area:security,b60205,Auth RBAC privacy and DPDP compliance
+area:devops,21262d,CI/CD Docker Terraform and monitoring
+area:qa,0e8a16,Unit integration E2E and performance tests
+

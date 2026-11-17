@@ -64,6 +64,23 @@ export class CreatePostDto {
   @IsOptional()
   comments_enabled?: boolean;
 
+  @ApiPropertyOptional({ description: 'Target communities for SELECTED_COMMUNITIES visibility', type: [String] })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  audience_community_ids?: string[];
+
+  @ApiPropertyOptional({ description: 'Save as unpublished draft', default: false })
+  @IsBoolean()
+  @IsOptional()
+  is_draft?: boolean;
+
+  @ApiPropertyOptional({ description: 'Attached media IDs', type: [String] })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  attachment_ids?: string[];
+
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()
@@ -75,3 +92,4 @@ export class CreatePostDto {
   @IsOptional()
   poll?: CreatePollDto;
 }
+

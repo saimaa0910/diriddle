@@ -126,3 +126,4 @@ export const REPORT_REASONS: { reason: ReportReason; label: string; description:
   { reason: ReportReason.IMPERSONATION, label: 'Impersonation', description: 'Pretending to be someone else' },
   { reason: ReportReason.OTHER, label: 'Other', description: 'Another community guideline violation' },
 ];
+

@@ -13,7 +13,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.get<string>('JWT_SECRET', 'dev-secret'),
+      secretOrKey: config.get<string>('JWT_SECRET') ?? 'dev-secret-min-32-chars-local-only',
     });
   }
 
@@ -44,6 +44,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       });
     }
 
+    if (user.status === 'DEACTIVATED') {
+      throw new ForbiddenException({
+        error: 'ACCOUNT_DEACTIVATED',
+        message: 'Your account is deactivated. Please reactivate to continue.',
+      });
+    }
+
     return user;
   }
 }
+

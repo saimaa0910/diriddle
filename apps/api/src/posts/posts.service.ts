@@ -4,12 +4,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ReactionType } from '@prisma/client';
+import { ReactionType, Visibility } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { IdentitiesService } from '../identities/identities.service';
 import { ModerationService } from '../moderation/moderation.service';
 import { ReactionsService } from '../reactions/reactions.service';
 import { CommunityGateway } from '../realtime/community.gateway';
+import { HashtagService } from './hashtag.service';
+import { MentionService } from './mention.service';
 import { CreatePostDto } from './dto/create-post.dto';
 
 @Injectable()
@@ -20,6 +22,8 @@ export class PostsService {
     private readonly moderationService: ModerationService,
     private readonly reactionsService: ReactionsService,
     private readonly gateway: CommunityGateway,
+    private readonly hashtagService: HashtagService,
+    private readonly mentionService: MentionService,
   ) {}
 
   async create(dto: CreatePostDto, userId: string, headerIdempotencyKey?: string) {
@@ -56,58 +60,102 @@ export class PostsService {
       dto.community_id,
     );
 
-    const postStatus = safety.action === 'HOLD_FOR_REVIEW' ? 'UNDER_REVIEW' : 'PUBLISHED';
+    const isDraft = dto.is_draft ?? false;
+    const postStatus = isDraft
+      ? 'DRAFT'
+      : safety.action === 'HOLD_FOR_REVIEW'
+        ? 'UNDER_REVIEW'
+        : 'PUBLISHED';
 
-    const post = await this.prisma.post.create({
-      data: {
-        userId,
-        anonymousIdentityId: identity.id,
-        communityId: dto.community_id,
-        category: dto.category,
-        content: dto.content,
-        visibility: dto.visibility ?? 'COMMUNITY',
-        commentsEnabled: dto.comments_enabled ?? true,
-        status: postStatus,
-      },
-      include: { anonymousIdentity: true, community: true },
-    });
-
-    if (dto.poll) {
-      const hours = dto.poll.closes_in_hours ?? 24;
-      const poll = await this.prisma.poll.create({
+    const { post, poll } = await this.prisma.$transaction(async (tx: any) => {
+      const post = await tx.post.create({
         data: {
-          postId: post.id,
-          question: dto.poll.question,
-          closesAt: new Date(Date.now() + hours * 60 * 60 * 1000),
+          userId,
+          anonymousIdentityId: identity.id,
+          communityId: dto.community_id,
+          category: dto.category,
+          content: dto.content,
+          visibility: dto.visibility ?? 'COMMUNITY',
+          commentsEnabled: dto.comments_enabled ?? true,
+          status: postStatus,
+          isDraft,
+          isPinned: false,
         },
+        include: { anonymousIdentity: true, community: true },
       });
-      for (let i = 0; i < dto.poll.options.length; i++) {
-        await this.prisma.pollOption.create({
+
+      if (dto.visibility === 'SELECTED_COMMUNITIES' && dto.audience_community_ids) {
+        for (const targetCommId of dto.audience_community_ids) {
+          await tx.postAudience.create({
+            data: { postId: post.id, communityId: targetCommId },
+          });
+        }
+      }
+
+      if (dto.attachment_ids && dto.attachment_ids.length > 0) {
+        await tx.attachment.updateMany({
+          where: { id: { in: dto.attachment_ids } },
+          data: { postId: post.id },
+        });
+      }
+
+      let poll: any = null;
+      if (dto.poll) {
+        const hours = dto.poll.closes_in_hours ?? 24;
+        poll = await tx.poll.create({
           data: {
-            pollId: poll.id,
-            optionText: dto.poll.options[i],
-            sortOrder: i,
+            postId: post.id,
+            question: dto.poll.question,
+            closesAt: new Date(Date.now() + hours * 60 * 60 * 1000),
+          },
+        });
+        const optionsData = dto.poll.options.map((optionText: string, idx: number) => ({
+          pollId: poll.id,
+          optionText,
+          sortOrder: idx,
+        }));
+        await tx.pollOption.createMany({
+          data: optionsData,
+        });
+        const options = await tx.pollOption.findMany({
+          where: { pollId: poll.id },
+          orderBy: { sortOrder: 'asc' },
+        });
+        poll = { ...poll, options };
+      }
+
+      if (idempotencyKey) {
+        await tx.idempotencyKey.upsert({
+          where: { userId_key: { userId, key: idempotencyKey } },
+          create: {
+            userId,
+            key: idempotencyKey,
+            resourceType: 'POST',
+            resourceId: post.id,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          },
+          update: {
+            resourceId: post.id,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
           },
         });
       }
+
+      return { post, poll };
+    });
+
+    // Process hashtags
+    const hashtags = this.hashtagService.extractHashtags(post.content);
+    if (hashtags.length > 0) {
+      await this.hashtagService.upsertPostHashtags(post.id, hashtags);
     }
 
-    if (idempotencyKey) {
-      await this.prisma.idempotencyKey.upsert({
-        where: { userId_key: { userId, key: idempotencyKey } },
-        create: {
-          userId,
-          key: idempotencyKey,
-          resourceType: 'POST',
-          resourceId: post.id,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        },
-        update: {
-          resourceId: post.id,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        },
-      });
-    }
+    // Process mentions
+    await this.mentionService.resolveAndNotifyMentions(
+      post.content,
+      post.communityId,
+      post.id,
+    );
 
     const responseDto = {
       id: post.id,
@@ -122,11 +170,19 @@ export class PostsService {
       comment_count: 0,
       reaction_count: 0,
       moderation_flags: safety.detectedPatterns,
+      poll: poll ?? null,
+      hashtags: hashtags.map((t) => `#${t}`),
+      is_draft: post.isDraft,
+      is_pinned: post.isPinned,
       created_at: post.createdAt,
     };
 
     if (postStatus === 'PUBLISHED') {
-      this.gateway.broadcastPostCreated(post.communityId, responseDto);
+      if (typeof (this.gateway as any).broadcastNewPost === 'function') {
+        (this.gateway as any).broadcastNewPost(post.communityId, responseDto);
+      } else {
+        this.gateway.broadcastPostCreated(post.communityId, responseDto);
+      }
     }
 
     return responseDto;
@@ -183,6 +239,8 @@ export class PostsService {
       is_saved: isSaved,
       is_own: userId ? post.userId === userId : false,
       poll: (post as any).poll ?? null,
+      is_draft: post.isDraft,
+      is_pinned: post.isPinned,
       created_at: post.createdAt,
     };
   }
@@ -346,4 +404,168 @@ export class PostsService {
       })),
     };
   }
+
+  async pinPost(postId: string, userId: string) {
+    const post = await this.prisma.post.findUnique({ where: { id: postId } });
+    if (!post || post.deletedAt) {
+      throw new NotFoundException({ error: 'POST_NOT_FOUND', message: 'Post not found' });
+    }
+
+    const isStaff = await this.isCommunityStaff(post.communityId, userId);
+    if (!isStaff) {
+      throw new ForbiddenException({ error: 'FORBIDDEN_PIN', message: 'Staff only' });
+    }
+
+    const updated = await this.prisma.post.update({
+      where: { id: postId },
+      data: { isPinned: true },
+    });
+
+    return { id: updated.id, is_pinned: true };
+  }
+
+  async unpinPost(postId: string, userId: string) {
+    const post = await this.prisma.post.findUnique({ where: { id: postId } });
+    if (!post || post.deletedAt) {
+      throw new NotFoundException({ error: 'POST_NOT_FOUND', message: 'Post not found' });
+    }
+
+    const isStaff = await this.isCommunityStaff(post.communityId, userId);
+    if (!isStaff) {
+      throw new ForbiddenException({ error: 'FORBIDDEN_UNPIN', message: 'Staff only' });
+    }
+
+    const updated = await this.prisma.post.update({
+      where: { id: postId },
+      data: { isPinned: false },
+    });
+
+    return { id: updated.id, is_pinned: false };
+  }
+
+  async hidePost(postId: string, userId: string) {
+    const post = await this.prisma.post.findUnique({ where: { id: postId } });
+    if (!post || post.deletedAt) {
+      throw new NotFoundException({ error: 'POST_NOT_FOUND', message: 'Post not found' });
+    }
+
+    const isStaff = await this.isCommunityStaff(post.communityId, userId);
+    if (post.userId !== userId && !isStaff) {
+      throw new ForbiddenException({
+        error: 'FORBIDDEN_HIDE',
+        message: 'Only author or community staff can hide this post',
+      });
+    }
+
+    const updated = await this.prisma.post.update({
+      where: { id: postId },
+      data: { status: 'HIDDEN' as any },
+    });
+
+    return { id: updated.id, status: 'HIDDEN', hidden: true };
+  }
+
+  async unhidePost(postId: string, userId: string) {
+    const post = await this.prisma.post.findUnique({ where: { id: postId } });
+    if (!post || post.deletedAt) {
+      throw new NotFoundException({ error: 'POST_NOT_FOUND', message: 'Post not found' });
+    }
+
+    const isStaff = await this.isCommunityStaff(post.communityId, userId);
+    if (post.userId !== userId && !isStaff) {
+      throw new ForbiddenException({
+        error: 'FORBIDDEN_UNHIDE',
+        message: 'Only author or community staff can unhide this post',
+      });
+    }
+
+    const updated = await this.prisma.post.update({
+      where: { id: postId },
+      data: { status: 'PUBLISHED' },
+    });
+
+    return { id: updated.id, status: 'PUBLISHED', hidden: false };
+  }
+
+  async sharePost(postId: string, _userId: string) {
+    const post = await this.prisma.post.findUnique({ where: { id: postId } });
+    if (!post || post.deletedAt || post.status === 'REMOVED') {
+      throw new NotFoundException({ error: 'POST_NOT_FOUND', message: 'Post not found' });
+    }
+
+    return {
+      post_id: post.id,
+      share_url: `/posts/${post.id}`,
+      shareable: post.visibility === 'PUBLIC' || post.visibility === 'COMMUNITY',
+    };
+  }
+
+  async publishDraft(postId: string, userId: string) {
+    const post = await this.prisma.post.findUnique({ where: { id: postId } });
+    if (!post || post.deletedAt) {
+      throw new NotFoundException({ error: 'POST_NOT_FOUND', message: 'Post not found' });
+    }
+    if (post.userId !== userId) {
+      throw new ForbiddenException({ error: 'FORBIDDEN_PUBLISH', message: 'Author only' });
+    }
+
+    const updated = await this.prisma.post.update({
+      where: { id: postId },
+      data: { status: 'PUBLISHED', isDraft: false },
+    });
+
+    return { id: updated.id, status: 'PUBLISHED', is_draft: false };
+  }
+
+  async update(
+    postId: string,
+    userId: string,
+    dto: { content?: string; category?: any; commentsEnabled?: boolean },
+  ) {
+    const post = await this.prisma.post.findUnique({ where: { id: postId } });
+    if (!post || post.deletedAt) {
+      throw new NotFoundException({ error: 'POST_NOT_FOUND', message: 'Post not found' });
+    }
+    if (post.userId !== userId) {
+      throw new ForbiddenException({ error: 'FORBIDDEN_EDIT', message: 'Author only' });
+    }
+
+    if (dto.content) {
+      const safety = this.moderationService.checkContentSafety(dto.content);
+      if (!safety.allowed || safety.action === 'REJECT') {
+        throw new BadRequestException({
+          error: 'CONTENT_PII_REJECTED',
+          message: 'Edited content contains restricted personal identifiers.',
+        });
+      }
+    }
+
+    const updated = await this.prisma.post.update({
+      where: { id: postId },
+      data: {
+        ...(dto.content ? { content: dto.content } : {}),
+        ...(dto.category ? { category: dto.category } : {}),
+        ...(dto.commentsEnabled !== undefined ? { commentsEnabled: dto.commentsEnabled } : {}),
+      },
+    });
+
+    if (dto.content) {
+      await this.hashtagService.removePostHashtags(postId);
+      const hashtags = this.hashtagService.extractHashtags(dto.content);
+      await this.hashtagService.upsertPostHashtags(postId, hashtags);
+    }
+
+    return { id: updated.id, content: updated.content, updated_at: updated.updatedAt };
+  }
+
+  private async isCommunityStaff(communityId: string, userId: string): Promise<boolean> {
+    const community = await this.prisma.community.findUnique({ where: { id: communityId } });
+    if (community?.ownerId === userId) return true;
+
+    const role = await this.prisma.communityRole.findUnique({
+      where: { communityId_userId: { communityId, userId } },
+    });
+    return role?.role === 'OWNER' || role?.role === 'MODERATOR';
+  }
 }
+

@@ -66,3 +66,4 @@ describe('PostCard', () => {
     expect(onReport).toHaveBeenCalledTimes(1);
   });
 });
+

@@ -36,6 +36,65 @@ export class BlocksService {
     return { blocked: true, user_id: blockedId };
   }
 
+  async blockByContent(
+    blockerId: string,
+    targetType: 'POST' | 'COMMENT',
+    targetId: string,
+    _reason?: string,
+  ) {
+    let authorId: string;
+
+    if (targetType === 'POST') {
+      const post = await this.prisma.post.findUnique({ where: { id: targetId } });
+      if (!post || post.deletedAt) {
+        throw new NotFoundException({
+          error: 'POST_NOT_FOUND',
+          message: 'Target post not found',
+        });
+      }
+      authorId = post.userId;
+    } else if (targetType === 'COMMENT') {
+      const comment = await this.prisma.comment.findUnique({ where: { id: targetId } });
+      if (!comment || comment.deletedAt) {
+        throw new NotFoundException({
+          error: 'COMMENT_NOT_FOUND',
+          message: 'Target comment not found',
+        });
+      }
+      authorId = comment.userId;
+    } else {
+      throw new BadRequestException({
+        error: 'INVALID_TARGET_TYPE',
+        message: 'target_type must be POST or COMMENT',
+      });
+    }
+
+    if (authorId === blockerId) {
+      throw new BadRequestException({
+        error: 'SELF_BLOCK_FORBIDDEN',
+        message: 'You cannot block yourself',
+      });
+    }
+
+    const existing = await this.prisma.block.findUnique({
+      where: { blockerId_blockedId: { blockerId, blockedId: authorId } },
+    });
+
+    if (!existing) {
+      await this.prisma.block.create({
+        data: {
+          blockerId,
+          blockedId: authorId,
+        },
+      });
+    }
+
+    return {
+      success: true,
+      message: 'Author blocked successfully',
+    };
+  }
+
   async unblock(blockerId: string, blockedId: string) {
     await this.prisma.block.deleteMany({
       where: { blockerId, blockedId },

@@ -8,3 +8,4 @@ import { CommunitiesService } from './communities.service';
   exports: [CommunitiesService],
 })
 export class CommunitiesModule {}
+

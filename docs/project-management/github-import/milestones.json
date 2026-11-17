@@ -1,0 +1,23 @@
+[
+  {
+    "title": "Release 0.1 – Engineering Alpha",
+    "description": "Weeks 1-4 (Sprints 1-2): Fix P0 API contract mismatches, RBAC/JWT security holes, code quality gates, and establish real PostgreSQL/PostGIS/Redis integration testing."
+  },
+  {
+    "title": "Release 0.2 – Feature Alpha",
+    "description": "Weeks 5-8 (Sprints 3-4): Supabase OTP auth, Redis rate-limiting/revocation, PostGIS/H3 geo-cells with k-anonymity, S3 media uploads, Polls UI, infinite scroll & search, anonymous-safe blocking."
+  },
+  {
+    "title": "Release 0.3 – Safety Beta",
+    "description": "Weeks 9-10 (Sprint 5): DPDP account deletion scrubbing, Hinglish/obfuscated PII moderation, Appeals UI, Admin HttpOnly SSR auth middleware, per-route throttling, and DPDP legal/SOP runbooks."
+  },
+  {
+    "title": "Release 0.9 – Release Candidate",
+    "description": "Weeks 11-12 (Sprint 6 Part 1): Admin Playwright & Mobile integration tests, k6 performance load validation, Sentry/OpenTelemetry observability, and Terraform AWS IaC (ap-south-1)."
+  },
+  {
+    "title": "Release 1.0 – MVP",
+    "description": "Week 12 (Sprint 6 Part 2): Gated production CD, security pen checklist, RDS PITR DR drill, EAS Android/iOS/Web release builds, incident runbooks, and MVP Go/No-Go."
+  }
+]
+

@@ -3,16 +3,16 @@ import { PrismaClient, CommunityType, PostCategory } from '@prisma/client';
 const prisma = new PrismaClient();
 
 const CITIES = [
-  { name: 'Mumbai', slug: 'mumbai', city: 'Mumbai', state: 'Maharashtra', geoCell: 'h3_in_mumbai_01' },
-  { name: 'Delhi', slug: 'delhi', city: 'Delhi', state: 'Delhi', geoCell: 'h3_in_delhi_01' },
-  { name: 'Bengaluru', slug: 'bengaluru', city: 'Bengaluru', state: 'Karnataka', geoCell: 'h3_in_blr_01' },
-  { name: 'Hyderabad', slug: 'hyderabad', city: 'Hyderabad', state: 'Telangana', geoCell: 'h3_in_hyd_01' },
-  { name: 'Chennai', slug: 'chennai', city: 'Chennai', state: 'Tamil Nadu', geoCell: 'h3_in_maa_01' },
-  { name: 'Kolkata', slug: 'kolkata', city: 'Kolkata', state: 'West Bengal', geoCell: 'h3_in_ccu_01' },
-  { name: 'Pune', slug: 'pune', city: 'Pune', state: 'Maharashtra', geoCell: 'h3_in_pnq_01' },
-  { name: 'Ahmedabad', slug: 'ahmedabad', city: 'Ahmedabad', state: 'Gujarat', geoCell: 'h3_in_amd_01' },
-  { name: 'Jaipur', slug: 'jaipur', city: 'Jaipur', state: 'Rajasthan', geoCell: 'h3_in_jai_01' },
-  { name: 'Lucknow', slug: 'lucknow', city: 'Lucknow', state: 'Uttar Pradesh', geoCell: 'h3_in_lko_01' },
+  { name: 'Mumbai', slug: 'mumbai', city: 'Mumbai', state: 'Maharashtra', stateCode: 'MH', geoCell: 'h3_in_mumbai_01', lat: 19.076, lng: 72.8777, aliases: ['Bombay'] },
+  { name: 'Delhi', slug: 'delhi', city: 'Delhi', state: 'Delhi', stateCode: 'DL', geoCell: 'h3_in_delhi_01', lat: 28.6139, lng: 77.209, aliases: ['New Delhi', 'NCR'] },
+  { name: 'Bengaluru', slug: 'bengaluru', city: 'Bengaluru', state: 'Karnataka', stateCode: 'KA', geoCell: 'h3_in_blr_01', lat: 12.9716, lng: 77.5946, aliases: ['Bangalore'] },
+  { name: 'Hyderabad', slug: 'hyderabad', city: 'Hyderabad', state: 'Telangana', stateCode: 'TS', geoCell: 'h3_in_hyd_01', lat: 17.385, lng: 78.4867, aliases: ['Cyberabad'] },
+  { name: 'Chennai', slug: 'chennai', city: 'Chennai', state: 'Tamil Nadu', stateCode: 'TN', geoCell: 'h3_in_maa_01', lat: 13.0827, lng: 80.2707, aliases: ['Madras'] },
+  { name: 'Kolkata', slug: 'kolkata', city: 'Kolkata', state: 'West Bengal', stateCode: 'WB', geoCell: 'h3_in_ccu_01', lat: 22.5726, lng: 88.3639, aliases: ['Calcutta'] },
+  { name: 'Pune', slug: 'pune', city: 'Pune', state: 'Maharashtra', stateCode: 'MH', geoCell: 'h3_in_pnq_01', lat: 18.5204, lng: 73.8567, aliases: ['Poona'] },
+  { name: 'Ahmedabad', slug: 'ahmedabad', city: 'Ahmedabad', state: 'Gujarat', stateCode: 'GJ', geoCell: 'h3_in_amd_01', lat: 23.0225, lng: 72.5714, aliases: ['Amdavad'] },
+  { name: 'Jaipur', slug: 'jaipur', city: 'Jaipur', state: 'Rajasthan', stateCode: 'RJ', geoCell: 'h3_in_jai_01', lat: 26.9124, lng: 75.7873, aliases: ['Pink City'] },
+  { name: 'Lucknow', slug: 'lucknow', city: 'Lucknow', state: 'Uttar Pradesh', stateCode: 'UP', geoCell: 'h3_in_lko_01', lat: 26.8467, lng: 80.9462, aliases: ['City of Nawabs'] },
 ];
 
 const LOCAL_COMMUNITIES = [
@@ -26,9 +26,83 @@ const LOCAL_COMMUNITIES = [
   { name: 'Kothrud', slug: 'kothrud-pnq', type: CommunityType.NEIGHBORHOOD, city: 'Pune', state: 'Maharashtra', geoCell: 'h3_in_pnq_kot' },
 ];
 
+const RETENTION_POLICIES = [
+  { dataType: 'TEMPORARY_GPS', retentionDays: 1, legalBasis: 'Location-based feed discovery (ephemeral)' },
+  { dataType: 'AUDIT_LOGS', retentionDays: 365, legalBasis: 'Security and fraud prevention' },
+  { dataType: 'ACCOUNT_DELETION_RECOVERY', retentionDays: 30, legalBasis: 'User right to erasure grace recovery window' },
+  { dataType: 'CONSENT_RECORDS', retentionDays: 1825, legalBasis: 'Regulatory compliance (Digital Personal Data Protection Act)' },
+  { dataType: 'INACTIVE_SESSIONS', retentionDays: 90, legalBasis: 'Device session cleanup' },
+];
+
 async function main() {
   console.log('Seeding diriddle PostgreSQL database...');
 
+  // 1. Seed Country
+  const india = await prisma.country.upsert({
+    where: { code: 'IN' },
+    update: {},
+    create: {
+      name: 'India',
+      code: 'IN',
+      isActive: true,
+    },
+  });
+  console.log(`  + Country: ${india.name}`);
+
+  // 2. Seed States and Cities in Geography tables
+  const stateMap = new Map<string, string>();
+  for (const c of CITIES) {
+    if (!stateMap.has(c.state)) {
+      const state = await prisma.state.create({
+        data: {
+          countryId: india.id,
+          name: c.state,
+          code: c.stateCode,
+          isActive: true,
+        },
+      });
+      stateMap.set(c.state, state.id);
+      console.log(`  + State: ${c.state}`);
+    }
+
+    const stateId = stateMap.get(c.state)!;
+    await prisma.city.upsert({
+      where: { slug: c.slug },
+      update: {
+        aliases: c.aliases,
+        centerLat: c.lat,
+        centerLng: c.lng,
+        isActive: true,
+      },
+      create: {
+        stateId,
+        name: c.name,
+        slug: c.slug,
+        aliases: c.aliases,
+        centerLat: c.lat,
+        centerLng: c.lng,
+        radiusKm: 25,
+        isActive: true,
+        activatedAt: new Date(),
+      },
+    });
+    console.log(`  + Geo City: ${c.name}`);
+  }
+
+  // 3. Seed Retention Policies
+  for (const p of RETENTION_POLICIES) {
+    const existing = await prisma.retentionPolicy.findFirst({
+      where: { dataType: p.dataType },
+    });
+    if (!existing) {
+      await prisma.retentionPolicy.create({
+        data: p,
+      });
+      console.log(`  + Retention Policy: ${p.dataType} (${p.retentionDays}d)`);
+    }
+  }
+
+  // 4. Seed Communities
   const communityMap = new Map<string, string>();
 
   for (const c of CITIES) {
@@ -46,7 +120,7 @@ async function main() {
       },
     });
     communityMap.set(c.slug, community.id);
-    console.log(`  + City: ${c.name}`);
+    console.log(`  + City Community: ${c.name}`);
   }
 
   for (const c of LOCAL_COMMUNITIES) {
@@ -64,10 +138,10 @@ async function main() {
       },
     });
     communityMap.set(c.slug, community.id);
-    console.log(`  + Local community: ${c.name} (${c.city})`);
+    console.log(`  + Local Community: ${c.name} (${c.city})`);
   }
 
-  // Demo user + admin role for local testing
+  // 5. Seed Super Admin Demo User
   const demoUser = await prisma.user.upsert({
     where: { authId: 'phone:+919876543210' },
     update: {},
@@ -88,6 +162,7 @@ async function main() {
     },
   });
 
+  // 6. Seed Sample Posts
   const samplePosts = [
     {
       slug: 'bengaluru',

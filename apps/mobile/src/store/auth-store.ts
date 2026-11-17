@@ -120,3 +120,4 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     await persistAuth(next);
   },
 }));
+

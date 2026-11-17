@@ -1,7 +1,10 @@
-## 1. Task Information
+## 1. Task & Branch Information
 
-- **Jira / Task ID**: `DIR-XXX`
-- **Type**: <!-- feat | fix | chore | docs | refactor | test -->
+- **Task ID**: `DIR-XXX`
+- **Epic**: `DIR-EPXX`
+- **Target Release Milestone**: <!-- Release 0.1 | Release 0.2 | Release 0.3 | Release 0.9 | Release 1.0 -->
+- **Type**: <!-- feat | fix | chore | docs | refactor | test | ci -->
+- **Branch**: <!-- feature/DIR-XXX-slug | bugfix/DIR-XXX-slug | release/x.y.z | hotfix/DIR-XXX-slug -->
 - **Related Issue**: #
 
 ## 2. Description (What & Why)
@@ -17,16 +20,16 @@
 - **Admin Dashboard (`apps/admin`)**:
 - **Docs & Infra (`docs/`, `.github/`, `infrastructure/`, `scripts/`)**:
 
-## 4. Testing
+## 4. Testing & Quality Gates
 
 - [ ] Unit tests added/updated (`pnpm run test`)
-- [ ] Integration tests verified
+- [ ] Real PostgreSQL integration tests verified (if DB/PostGIS/constraints touched)
 - [ ] API e2e tests passed (`pnpm run test:e2e`)
 - [ ] Lint passed (`pnpm run lint`)
+- [ ] Format check passed (`pnpm run format:check`)
 - [ ] Type-check passed (`pnpm run typecheck`)
 - [ ] Workspace build passed (`pnpm run build`)
 - [ ] Windows web smoke test verified (if UI/API changed)
-- **Security implications**: <!-- Describe any auth, RBAC, rate-limit, or data exposure impact -->
 
 ## 5. Database and Configuration
 
@@ -34,23 +37,25 @@
 - [ ] Environment variables documented in `.env.example` (or N/A)
 - [ ] Confirmed no `.env`, API keys, tokens, or secrets are committed
 
-## 6. Security Review
+## 6. Privacy, Security & Identity Isolation Review
 
 - [ ] **Auth validated**: JWT / OTP verification enforced server-side
 - [ ] **Authz validated**: Ownership checks & Admin `RolesGuard` enforced server-side
-- [ ] **Sensitive info protected**: `ErrorEnvelope` leaks no stack traces/PII; mobile uses leak-stop error mapping
-- [ ] **Location privacy checked**: No precise GPS coordinates stored or exposed in public DTOs
-- [ ] **Anonymous identity protected**: Public post/comment/profile responses expose only `Anonymous #XXXX`, never `userId`, `authId`, phone, or email
+- [ ] **Sensitive info protected**: `ErrorEnvelope` leaks no stack traces/PII; mobile uses `userMessageForCode` leak-stop mapping
+- [ ] **Location privacy checked**: No precise GPS coordinates (`lat`/`lng`) persisted or exposed in public DTOs
+- [ ] **Anonymous identity protected**: Public post/comment/profile responses expose only community-scoped `Anonymous #XXXX`, never `users.id`, `authId`, phone, or email
+- [ ] **Moderation / Audit logging**: Restricted admin actions & identity lookups record immutable `AuditLog` entries
 
 ## 7. Screenshots / API Examples
 
 <!-- Paste Windows Expo Web / Admin screenshots or curl/Swagger examples for UI or API changes -->
 
-## 8. Reviewer Checklist
+## 8. Reviewer & DoD Checklist
 
+- [ ] Meets all criteria in `docs/project-management/DEFINITION_OF_DONE.md`
 - [ ] Code adheres to `docs/code-review-guidelines.md`
 - [ ] `packages/shared-types` and `packages/api-contracts/openapi.yaml` updated if API shapes changed
-- [ ] No unintended cross-package regressions
+- [ ] `DRIFT-REGISTER.md` updated if any temporary divergence remains
 
 ## 9. Final Status
 

@@ -18,7 +18,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
-    const requestId = (request.headers['x-request-id'] as string) || uuidv4();
+    const requestId =
+      (request.headers['x-correlation-id'] as string) ||
+      (request.headers['x-request-id'] as string) ||
+      (request as any).correlationId ||
+      uuidv4();
 
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
     let error = 'INTERNAL_SERVER_ERROR';
@@ -61,3 +65,4 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     response.status(statusCode).json(envelope);
   }
 }
+

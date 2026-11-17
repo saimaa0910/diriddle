@@ -47,4 +47,99 @@ describe('BlocksService', () => {
     const listAfter = await service.getBlocked('user-demo-admin');
     expect(listAfter.data).toHaveLength(0);
   });
+
+  describe('blockByContent', () => {
+    it('blocks post author anonymously and omits author userId from return', async () => {
+      const author = await store.user.create({ data: { authId: 'phone:+919111111111' } });
+      const viewer = await store.user.create({ data: { authId: 'phone:+919222222222' } });
+
+      const post = await store.post.create({
+        data: {
+          userId: author.id,
+          communityId: 'comm-bengaluru',
+          content: 'Confession post',
+          category: 'CONFESSION',
+        },
+      });
+
+      const res = await service.blockByContent(viewer.id, 'POST', post.id, 'Spam content');
+      expect(res.success).toBe(true);
+      expect(res.message).toBe('Author blocked successfully');
+      expect((res as any).userId).toBeUndefined();
+      expect((res as any).authorId).toBeUndefined();
+
+      const blockedIds = await service.getBlockedUserIds(viewer.id);
+      expect(blockedIds).toContain(author.id);
+    });
+
+    it('blocks comment author anonymously', async () => {
+      const author = await store.user.create({ data: { authId: 'phone:+919333333333' } });
+      const viewer = await store.user.create({ data: { authId: 'phone:+919444444444' } });
+
+      const comment = await store.comment.create({
+        data: {
+          userId: author.id,
+          postId: 'post-demo-1',
+          content: 'Nasty comment',
+        },
+      });
+
+      const res = await service.blockByContent(viewer.id, 'COMMENT', comment.id);
+      expect(res.success).toBe(true);
+
+      const blockedIds = await service.getBlockedUserIds(viewer.id);
+      expect(blockedIds).toContain(author.id);
+    });
+
+    it('throws NotFoundException when target post does not exist', async () => {
+      await expect(
+        service.blockByContent('user-demo-admin', 'POST', 'non-existent-post'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws NotFoundException when target comment does not exist', async () => {
+      await expect(
+        service.blockByContent('user-demo-admin', 'COMMENT', 'non-existent-comment'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequestException with SELF_BLOCK_FORBIDDEN when user blocks their own post', async () => {
+      const author = await store.user.create({ data: { authId: 'phone:+919555555555' } });
+      const post = await store.post.create({
+        data: {
+          userId: author.id,
+          communityId: 'comm-bengaluru',
+          content: 'My own post',
+          category: 'CONFESSION',
+        },
+      });
+
+      await expect(service.blockByContent(author.id, 'POST', post.id)).rejects.toMatchObject({
+        response: {
+          error: 'SELF_BLOCK_FORBIDDEN',
+          message: 'You cannot block yourself',
+        },
+      });
+    });
+
+    it('is idempotent when block already exists', async () => {
+      const author = await store.user.create({ data: { authId: 'phone:+919666666666' } });
+      const viewer = await store.user.create({ data: { authId: 'phone:+919777777777' } });
+
+      const post = await store.post.create({
+        data: {
+          userId: author.id,
+          communityId: 'comm-bengaluru',
+          content: 'Some post',
+          category: 'CONFESSION',
+        },
+      });
+
+      const res1 = await service.blockByContent(viewer.id, 'POST', post.id);
+      expect(res1.success).toBe(true);
+
+      const res2 = await service.blockByContent(viewer.id, 'POST', post.id);
+      expect(res2.success).toBe(true);
+    });
+  });
 });

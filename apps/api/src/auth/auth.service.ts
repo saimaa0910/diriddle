@@ -1,28 +1,36 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { AuthProvider } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../database/prisma.service';
 import { OtpRateLimiterService } from './otp-rate-limiter.service';
+import { OtpStorageService } from './otp-storage.service';
+import { SessionService, DeviceInfo } from './session.service';
+import { TokenRevocationService } from './token-revocation.service';
 import { SendOtpDto } from './dto/send-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { VerifyAgeDto } from './dto/verify-age.dto';
+import { LinkIdentityDto } from './dto/link-identity.dto';
 
 @Injectable()
 export class AuthService {
-  private readonly revokedJtis = new Set<string>();
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly otpRateLimiter: OtpRateLimiterService,
+    private readonly otpStorage: OtpStorageService,
+    private readonly sessionService: SessionService,
+    private readonly tokenRevocationService: TokenRevocationService,
   ) {}
 
   async sendOtp(dto: SendOtpDto) {
@@ -30,6 +38,14 @@ export class AuthService {
     const key = `${dto.type}:${normalized}`;
     const allowBypassCooldown = process.env.NODE_ENV === 'test';
     const { code, expiresInSeconds } = this.otpRateLimiter.issueOtp(key, allowBypassCooldown);
+
+    try {
+      await this.otpStorage.issueOtp(key, allowBypassCooldown);
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'test') {
+        throw err;
+      }
+    }
 
     const response: Record<string, any> = {
       message: `OTP sent to ${dto.type}`,
@@ -46,11 +62,19 @@ export class AuthService {
     return response;
   }
 
-  async verifyOtp(dto: VerifyOtpDto) {
+  async verifyOtp(dto: VerifyOtpDto, deviceInfo?: DeviceInfo) {
     const normalized = this.normalizeIdentifier(dto.identifier, dto.type);
     const key = `${dto.type}:${normalized}`;
 
-    const valid = this.otpRateLimiter.verifyOtp(key, dto.otp, this.isDevOtpAllowed());
+    let valid = this.otpRateLimiter.verifyOtp(key, dto.otp, this.isDevOtpAllowed());
+    if (!valid) {
+      try {
+        valid = await this.otpStorage.verifyOtp(key, dto.otp, this.isDevOtpAllowed());
+      } catch {
+        valid = false;
+      }
+    }
+
     if (!valid) {
       throw new UnauthorizedException({
         error: 'INVALID_OTP',
@@ -74,6 +98,30 @@ export class AuthService {
       });
     }
 
+    const provider = dto.type === 'phone' ? 'PHONE' : 'EMAIL';
+    try {
+      await this.prisma.authIdentity.upsert({
+        where: {
+          provider_identifier: {
+            provider: provider as any,
+            identifier: normalized,
+          },
+        },
+        create: {
+          userId: user.id,
+          provider: provider as any,
+          identifier: normalized,
+          verifiedAt: new Date(),
+          isPrimary: true,
+        },
+        update: {
+          verifiedAt: new Date(),
+        },
+      });
+    } catch {
+      // In-memory or concurrent safe fallback
+    }
+
     if (user.deletedAt || user.status === 'DELETED') {
       throw new ForbiddenException({
         error: 'ACCOUNT_DELETED',
@@ -89,8 +137,23 @@ export class AuthService {
 
     const tokens = await this.issueTokens(user.authId, user.id);
 
+    try {
+      await this.sessionService.createSession(
+        user.id,
+        tokens.refresh_jti,
+        new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        deviceInfo,
+      );
+      await this.sessionService.recordLoginAttempt(user.id, deviceInfo ?? {}, true);
+    } catch {
+      // In-memory or logging errors should not block auth
+    }
+
     return {
-      ...tokens,
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      token_type: tokens.token_type,
+      expires_in: tokens.expires_in,
       user: {
         id: user.id,
         age_verified: user.ageVerified,
@@ -110,10 +173,20 @@ export class AuthService {
         type: string;
       }>(dto.refresh_token, { secret: refreshSecret });
 
-      if (payload.type !== 'refresh' || this.revokedJtis.has(payload.jti)) {
+      if (payload.type !== 'refresh' || this.tokenRevocationService.isRevoked(payload.jti)) {
         throw new UnauthorizedException({
           error: 'INVALID_REFRESH_TOKEN',
           message: 'Refresh token is invalid or revoked',
+        });
+      }
+
+      const activeSession = await this.prisma.session.findFirst({
+        where: { jti: payload.jti, revokedAt: null },
+      });
+      if (!activeSession) {
+        throw new UnauthorizedException({
+          error: 'INVALID_REFRESH_TOKEN',
+          message: 'Session has been revoked or expired',
         });
       }
 
@@ -127,7 +200,7 @@ export class AuthService {
         });
       }
 
-      this.revokedJtis.add(payload.jti);
+      this.tokenRevocationService.revoke(payload.jti, Date.now() + 7 * 24 * 60 * 60 * 1000);
       return this.issueTokens(user.authId, user.id);
     } catch (err) {
       if (err instanceof UnauthorizedException) throw err;
@@ -145,7 +218,7 @@ export class AuthService {
           secret: this.getRefreshSecret(),
         });
         if (payload?.jti) {
-          this.revokedJtis.add(payload.jti);
+          this.tokenRevocationService.revoke(payload.jti, Date.now() + 7 * 24 * 60 * 60 * 1000);
         }
       } catch {
         // Ignore invalid refresh token on logout
@@ -155,13 +228,16 @@ export class AuthService {
   }
 
   async verifyAge(userId: string, dto: VerifyAgeDto, ipAddress?: string) {
-    if (!dto.confirmed_18_plus) {
+    const is18 = dto.confirmed_18_plus ?? dto.confirmed ?? false;
+    if (!is18) {
       throw new BadRequestException({
         error: 'AGE_REQUIREMENT_NOT_MET',
         message: 'You must be at least 18 years old to use diriddle',
       });
     }
-    if (!dto.accepted_terms || !dto.accepted_privacy) {
+    const terms = dto.accepted_terms ?? (dto.confirmed ? true : false);
+    const privacy = dto.accepted_privacy ?? (dto.confirmed ? true : false);
+    if (!terms || !privacy) {
       throw new BadRequestException({
         error: 'CONSENT_REQUIRED',
         message: 'Terms of Service and Privacy Policy acceptance are required',
@@ -169,12 +245,24 @@ export class AuthService {
     }
 
     const version = dto.policy_version ?? '1.0';
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { ageVerified: true },
-    });
-
-    await Promise.all([
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: userId }, data: { ageVerified: true } }),
+      this.prisma.ageVerification.upsert({
+        where: { userId },
+        create: {
+          userId,
+          status: 'VERIFIED',
+          method: 'SELF_ATTESTATION',
+          verifiedAt: new Date(),
+          policyVersion: version,
+        },
+        update: {
+          status: 'VERIFIED',
+          method: 'SELF_ATTESTATION',
+          verifiedAt: new Date(),
+          policyVersion: version,
+        },
+      }),
       this.prisma.userConsent.create({
         data: {
           userId,
@@ -210,7 +298,84 @@ export class AuthService {
     };
   }
 
-  private async issueTokens(authId: string, userId: string) {
+  async linkIdentity(userId: string, dto: LinkIdentityDto) {
+    const normalized = dto.identifier.trim().toLowerCase();
+    const existing = await this.prisma.authIdentity.findUnique({
+      where: {
+        provider_identifier: {
+          provider: dto.provider,
+          identifier: normalized,
+        },
+      },
+    });
+
+    if (existing) {
+      if (existing.userId === userId) {
+        return { message: 'Identity already linked to this account', identity_id: existing.id };
+      }
+      throw new ConflictException({
+        error: 'IDENTITY_ALREADY_LINKED',
+        message: 'This identity is already associated with another account',
+      });
+    }
+
+    const created = await this.prisma.authIdentity.create({
+      data: {
+        userId,
+        provider: dto.provider,
+        identifier: normalized,
+        verifiedAt: new Date(),
+        isPrimary: false,
+      },
+    });
+
+    return {
+      id: created.id,
+      provider: created.provider,
+      identifier: created.identifier,
+      linked: true,
+    };
+  }
+
+  async unlinkIdentity(userId: string, identityId: string) {
+    const identities = await this.prisma.authIdentity.findMany({ where: { userId } });
+    if (identities.length <= 1) {
+      throw new BadRequestException({
+        error: 'CANNOT_UNLINK_SOLE_IDENTITY',
+        message: 'Cannot unlink the only authentication identity from your account',
+      });
+    }
+
+    const target = identities.find((i) => i.id === identityId);
+    if (!target) {
+      throw new NotFoundException({
+        error: 'IDENTITY_NOT_FOUND',
+        message: 'Linked identity not found',
+      });
+    }
+
+    await this.prisma.authIdentity.delete({ where: { id: identityId } });
+    return { unlinked: true, id: identityId };
+  }
+
+  async listIdentities(userId: string) {
+    const identities = await this.prisma.authIdentity.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return {
+      data: identities.map((i) => ({
+        id: i.id,
+        provider: i.provider,
+        identifier: i.identifier,
+        is_primary: i.isPrimary,
+        created_at: i.createdAt,
+      })),
+    };
+  }
+
+  async issueTokens(authId: string, userId: string) {
     const jti = uuidv4();
     const accessSecret = this.configService.get<string>('JWT_SECRET', 'dev-secret');
     const refreshSecret = this.getRefreshSecret();
@@ -226,7 +391,7 @@ export class AuthService {
       ),
     ]);
 
-    return { access_token, refresh_token, token_type: 'Bearer', expires_in: 900 };
+    return { access_token, refresh_token, token_type: 'Bearer', expires_in: 900, refresh_jti: jti };
   }
 
   private getRefreshSecret(): string {

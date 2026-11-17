@@ -6,6 +6,9 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { OtpRateLimiterService } from './otp-rate-limiter.service';
+import { OtpStorageService } from './otp-storage.service';
+import { SessionService } from './session.service';
+import { TokenRevocationService } from './token-revocation.service';
 
 @Module({
   imports: [
@@ -19,7 +22,20 @@ import { OtpRateLimiterService } from './otp-rate-limiter.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, OtpRateLimiterService],
-  exports: [AuthService, OtpRateLimiterService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    OtpRateLimiterService,
+    OtpStorageService,
+    SessionService,
+    TokenRevocationService,
+  ],
+  exports: [
+    AuthService,
+    OtpRateLimiterService,
+    OtpStorageService,
+    SessionService,
+    TokenRevocationService,
+  ],
 })
 export class AuthModule {}

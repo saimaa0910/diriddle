@@ -8,14 +8,24 @@
     "start": "node dist/main",
     "lint": "echo ok",
     "type-check": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "jest --passWithNoTests",
     "test:e2e": "jest --config ./jest.integration.json --passWithNoTests",
+    "test:persistent": "jest --config ./jest.persistent.json --runInBand",
+    "test:security": "jest --config ./jest.integration.json --testPathPattern=security.e2e-spec.ts",
+    "test:privacy": "jest --config ./jest.integration.json --testPathPattern=privacy.e2e-spec.ts",
+    "test:authz": "jest --config ./jest.integration.json --testPathPattern=authorization.e2e-spec.ts",
+    "test:recovery": "jest --config ./jest.integration.json --testPathPattern=lifecycle-recovery.e2e-spec.ts",
+    "test:perf": "jest --config ./jest.integration.json --testPathPattern=performance.e2e-spec.ts",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:seed": "ts-node prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
     "@diriddle/shared-types": "workspace:*",

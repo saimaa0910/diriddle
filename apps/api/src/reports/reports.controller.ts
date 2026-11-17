@@ -1,14 +1,14 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
-import { IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ReportReason } from '@prisma/client';
 import { ReportsService } from './reports.service';
 import { CurrentUser, RequestUser } from '../common/decorators/current-user.decorator';
 
 class CreateReportDto {
-  @IsEnum(['POST', 'COMMENT', 'USER'])
-  target_type!: 'POST' | 'COMMENT' | 'USER';
+  @IsEnum(['POST', 'COMMENT', 'USER', 'COMMUNITY', 'IDENTITY'])
+  target_type!: 'POST' | 'COMMENT' | 'USER' | 'COMMUNITY' | 'IDENTITY';
 
   @IsString()
   @IsNotEmpty()
@@ -21,6 +21,15 @@ class CreateReportDto {
   @MaxLength(500)
   @IsOptional()
   description?: string;
+
+  @IsString()
+  @IsOptional()
+  community_id?: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  evidence_urls?: string[];
 }
 
 @ApiTags('Safety')
@@ -45,3 +54,4 @@ export class ReportsController {
     return this.reportsService.getMyReports(user.id);
   }
 }
+

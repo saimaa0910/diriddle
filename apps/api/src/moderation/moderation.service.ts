@@ -249,6 +249,31 @@ export class ModerationService {
       });
     }
 
+    if (modAction.targetType === 'POST') {
+      const post = await this.prisma.post.findUnique({ where: { id: modAction.targetId } });
+      if (!post || post.userId !== userId) {
+        throw new ForbiddenException({
+          error: 'FORBIDDEN_APPEAL',
+          message: 'You can only appeal moderation actions taken on your own content',
+        });
+      }
+    } else if (modAction.targetType === 'COMMENT') {
+      const comment = await this.prisma.comment.findUnique({ where: { id: modAction.targetId } });
+      if (!comment || comment.userId !== userId) {
+        throw new ForbiddenException({
+          error: 'FORBIDDEN_APPEAL',
+          message: 'You can only appeal moderation actions taken on your own content',
+        });
+      }
+    } else if (modAction.targetType === 'USER') {
+      if (modAction.targetId !== userId) {
+        throw new ForbiddenException({
+          error: 'FORBIDDEN_APPEAL',
+          message: 'You can only appeal moderation actions taken on your own content',
+        });
+      }
+    }
+
     const appeal = await this.prisma.moderationAppeal.create({
       data: {
         userId,
@@ -345,3 +370,4 @@ export class ModerationService {
     };
   }
 }
+

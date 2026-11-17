@@ -10,9 +10,13 @@ import { IdentitiesModule } from './identities/identities.module';
 import { LocationModule } from './location/location.module';
 import { CommunitiesModule } from './communities/communities.module';
 import { PostsModule } from './posts/posts.module';
+import { AttachmentsModule } from './attachments/attachments.module';
 import { CommentsModule } from './comments/comments.module';
 import { ReactionsModule } from './reactions/reactions.module';
 import { FeedModule } from './feed/feed.module';
+import { SearchModule } from './search/search.module';
+import { SchedulerModule } from './scheduler/scheduler.module';
+import { PrivacyModule } from './privacy/privacy.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReportsModule } from './reports/reports.module';
 import { BlocksModule } from './blocks/blocks.module';
@@ -42,8 +46,12 @@ import { RealtimeModule } from './realtime/realtime.module';
     LocationModule,
     CommunitiesModule,
     PostsModule,
+    AttachmentsModule,
     CommentsModule,
     FeedModule,
+    SearchModule,
+    SchedulerModule,
+    PrivacyModule,
     ReportsModule,
     AdminModule,
     AnalyticsModule,
@@ -57,3 +65,4 @@ import { RealtimeModule } from './realtime/realtime.module';
   ],
 })
 export class AppModule {}
+

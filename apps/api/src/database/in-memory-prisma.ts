@@ -3,7 +3,10 @@ import { v4 as uuidv4 } from 'uuid';
 type RecordRow = Record<string, any>;
 
 const COMPOUND_KEYS: Record<string, Record<string, string[]>> = {
-  anonymousIdentity: { userId_communityId: ['userId', 'communityId'] },
+  anonymousIdentity: {
+    userId_communityId: ['userId', 'communityId'],
+    communityId_displayCode: ['communityId', 'displayCode'],
+  },
   communityMember: { userId_communityId: ['userId', 'communityId'] },
   reaction: { postId_userId: ['postId', 'userId'] },
   savedPost: { userId_postId: ['userId', 'postId'] },
@@ -12,14 +15,24 @@ const COMPOUND_KEYS: Record<string, Record<string, string[]>> = {
   notificationPreference: { userId_notificationType: ['userId', 'notificationType'] },
   idempotencyKey: { userId_key: ['userId', 'key'] },
   pollVote: { pollId_userId: ['pollId', 'userId'] },
+  authIdentity: { provider_identifier: ['provider', 'identifier'] },
+  joinRequest: { communityId_userId: ['communityId', 'userId'] },
+  communityRole: { communityId_userId: ['communityId', 'userId'] },
+  postAudience: { postId_communityId: ['postId', 'communityId'] },
+  postHashtag: { postId_hashtagId: ['postId', 'hashtagId'] },
+  commentReaction: { commentId_userId: ['commentId', 'userId'] },
 };
 
 function matchesCondition(value: any, cond: any): boolean {
   if (cond === undefined) return true;
   if (cond === null) return value === null || value === undefined;
   if (typeof cond !== 'object' || cond instanceof Date) {
-    if (value instanceof Date && cond instanceof Date) {
-      return value.getTime() === cond.getTime();
+    if ((value instanceof Date || typeof value === 'string') && (cond instanceof Date || typeof cond === 'string')) {
+      const vTime = value instanceof Date ? value.getTime() : new Date(value).getTime();
+      const cTime = cond instanceof Date ? cond.getTime() : new Date(cond).getTime();
+      if (!isNaN(vTime) && !isNaN(cTime)) {
+        return vTime === cTime;
+      }
     }
     return value === cond;
   }
@@ -37,16 +50,44 @@ function matchesCondition(value: any, cond: any): boolean {
     if (cond.notIn.includes(value)) return false;
   }
   if ('gte' in cond) {
-    if (value == null || new Date(value).getTime() < new Date(cond.gte).getTime()) return false;
+    if (value == null) return false;
+    const condTime = cond.gte instanceof Date ? cond.gte.getTime() : (typeof cond.gte === 'string' && !isNaN(Date.parse(cond.gte)) ? new Date(cond.gte).getTime() : NaN);
+    const valTime = value instanceof Date ? value.getTime() : (typeof value === 'string' && !isNaN(Date.parse(value)) ? new Date(value).getTime() : NaN);
+    if (!isNaN(condTime) && !isNaN(valTime)) {
+      if (valTime < condTime) return false;
+    } else {
+      if (value < cond.gte) return false;
+    }
   }
   if ('lte' in cond) {
-    if (value == null || new Date(value).getTime() > new Date(cond.lte).getTime()) return false;
+    if (value == null) return false;
+    const condTime = cond.lte instanceof Date ? cond.lte.getTime() : (typeof cond.lte === 'string' && !isNaN(Date.parse(cond.lte)) ? new Date(cond.lte).getTime() : NaN);
+    const valTime = value instanceof Date ? value.getTime() : (typeof value === 'string' && !isNaN(Date.parse(value)) ? new Date(value).getTime() : NaN);
+    if (!isNaN(condTime) && !isNaN(valTime)) {
+      if (valTime > condTime) return false;
+    } else {
+      if (value > cond.lte) return false;
+    }
   }
   if ('gt' in cond) {
-    if (value == null || new Date(value).getTime() <= new Date(cond.gt).getTime()) return false;
+    if (value == null) return false;
+    const condTime = cond.gt instanceof Date ? cond.gt.getTime() : (typeof cond.gt === 'string' && !isNaN(Date.parse(cond.gt)) ? new Date(cond.gt).getTime() : NaN);
+    const valTime = value instanceof Date ? value.getTime() : (typeof value === 'string' && !isNaN(Date.parse(value)) ? new Date(value).getTime() : NaN);
+    if (!isNaN(condTime) && !isNaN(valTime)) {
+      if (valTime <= condTime) return false;
+    } else {
+      if (value <= cond.gt) return false;
+    }
   }
   if ('lt' in cond) {
-    if (value == null || new Date(value).getTime() >= new Date(cond.lt).getTime()) return false;
+    if (value == null) return false;
+    const condTime = cond.lt instanceof Date ? cond.lt.getTime() : (typeof cond.lt === 'string' && !isNaN(Date.parse(cond.lt)) ? new Date(cond.lt).getTime() : NaN);
+    const valTime = value instanceof Date ? value.getTime() : (typeof value === 'string' && !isNaN(Date.parse(value)) ? new Date(value).getTime() : NaN);
+    if (!isNaN(condTime) && !isNaN(valTime)) {
+      if (valTime >= condTime) return false;
+    } else {
+      if (value >= cond.lt) return false;
+    }
   }
   if ('contains' in cond) {
     if (typeof value !== 'string') return false;
@@ -54,6 +95,15 @@ function matchesCondition(value: any, cond: any): boolean {
     if (cond.mode === 'insensitive') {
       if (!value.toLowerCase().includes(needle.toLowerCase())) return false;
     } else if (!value.includes(needle)) {
+      return false;
+    }
+  }
+  if ('startsWith' in cond) {
+    if (typeof value !== 'string') return false;
+    const prefix = String(cond.startsWith);
+    if (cond.mode === 'insensitive') {
+      if (!value.toLowerCase().startsWith(prefix.toLowerCase())) return false;
+    } else if (!value.startsWith(prefix)) {
       return false;
     }
   }
@@ -155,6 +205,33 @@ export class InMemoryPrismaStore {
     pollOption: [],
     pollVote: [],
     adminRole: [],
+    userProfile: [],
+    authIdentity: [],
+    session: [],
+    loginHistory: [],
+    deletionRequest: [],
+    ageVerification: [],
+    country: [],
+    state: [],
+    city: [],
+    spatialCell: [],
+    temporaryUserGps: [],
+    communityRule: [],
+    communityBan: [],
+    joinRequest: [],
+    communityRole: [],
+    identityHistory: [],
+    postAudience: [],
+    attachment: [],
+    hashtag: [],
+    postHashtag: [],
+    mention: [],
+    trendingScore: [],
+    searchHistory: [],
+    identityAccessLog: [],
+    retentionPolicy: [],
+    otpChallenge: [],
+    commentReaction: [],
   };
 
   user = this.createDelegate('user');
@@ -181,6 +258,33 @@ export class InMemoryPrismaStore {
   pollOption = this.createDelegate('pollOption');
   pollVote = this.createDelegate('pollVote');
   adminRole = this.createDelegate('adminRole');
+  userProfile = this.createDelegate('userProfile');
+  authIdentity = this.createDelegate('authIdentity');
+  session = this.createDelegate('session');
+  loginHistory = this.createDelegate('loginHistory');
+  deletionRequest = this.createDelegate('deletionRequest');
+  ageVerification = this.createDelegate('ageVerification');
+  country = this.createDelegate('country');
+  state = this.createDelegate('state');
+  city = this.createDelegate('city');
+  spatialCell = this.createDelegate('spatialCell');
+  temporaryUserGps = this.createDelegate('temporaryUserGps');
+  communityRule = this.createDelegate('communityRule');
+  communityBan = this.createDelegate('communityBan');
+  joinRequest = this.createDelegate('joinRequest');
+  communityRole = this.createDelegate('communityRole');
+  identityHistory = this.createDelegate('identityHistory');
+  postAudience = this.createDelegate('postAudience');
+  attachment = this.createDelegate('attachment');
+  hashtag = this.createDelegate('hashtag');
+  postHashtag = this.createDelegate('postHashtag');
+  mention = this.createDelegate('mention');
+  trendingScore = this.createDelegate('trendingScore');
+  searchHistory = this.createDelegate('searchHistory');
+  identityAccessLog = this.createDelegate('identityAccessLog');
+  retentionPolicy = this.createDelegate('retentionPolicy');
+  otpChallenge = this.createDelegate('otpChallenge');
+  commentReaction = this.createDelegate('commentReaction');
 
   constructor() {
     this.seed();
@@ -219,6 +323,25 @@ export class InMemoryPrismaStore {
       if (include.locationPreference) {
         copy.locationPreference =
           this.tables.locationPreference.find((l) => l.userId === row.id) ?? null;
+      }
+      if (include.userProfile) {
+        copy.userProfile =
+          this.tables.userProfile.find((p) => p.userId === row.id) ?? null;
+      }
+      if (include.anonymousIdentities) {
+        copy.anonymousIdentities = this.tables.anonymousIdentity.filter((i) => i.userId === row.id);
+      }
+      if (include.authIdentities) {
+        copy.authIdentities = this.tables.authIdentity.filter((a) => a.userId === row.id);
+      }
+      if (include.userConsents) {
+        copy.userConsents = this.tables.userConsent.filter((c) => c.userId === row.id);
+      }
+      if (include.sessions) {
+        copy.sessions = this.tables.session.filter((s) => s.userId === row.id && s.revokedAt === null);
+      }
+      if (include.loginHistory) {
+        copy.loginHistory = this.tables.loginHistory.filter((l) => l.userId === row.id);
       }
     }
 
@@ -262,6 +385,15 @@ export class InMemoryPrismaStore {
       }
       if (include.post) {
         copy.post = this.tables.post.find((p) => p.id === row.postId) ?? null;
+      }
+      if (include.reactions) {
+        copy.reactions = this.tables.commentReaction.filter((r) => r.commentId === row.id);
+      }
+      if (include._count?.select?.reactions) {
+        copy._count = {
+          ...(copy._count ?? {}),
+          reactions: this.tables.commentReaction.filter((r) => r.commentId === row.id).length,
+        };
       }
       if (include.replies) {
         const replySpec = typeof include.replies === 'object' ? include.replies : {};
@@ -368,6 +500,8 @@ export class InMemoryPrismaStore {
           row.visibility = row.visibility ?? 'COMMUNITY';
           row.commentsEnabled = row.commentsEnabled ?? true;
           row.deletedAt = row.deletedAt ?? null;
+          row.isDraft = row.isDraft ?? false;
+          row.isPinned = row.isPinned ?? false;
         }
         if (modelName === 'comment') {
           row.status = row.status ?? 'ACTIVE';
@@ -393,6 +527,15 @@ export class InMemoryPrismaStore {
         getRows().push(row);
         const hydrated = this.hydrateRow(modelName, row, args.include);
         return args.select ? applySelect(hydrated, args.select) : hydrated;
+      },
+
+      createMany: async (args: any) => {
+        const data = Array.isArray(args.data) ? args.data : [args.data];
+        const delegate = this.createDelegate(modelName);
+        for (const item of data) {
+          await delegate.create({ data: item });
+        }
+        return { count: data.length };
       },
 
       update: async (args: any) => {
@@ -506,7 +649,43 @@ export class InMemoryPrismaStore {
     ];
 
     for (const c of cities) {
-      this.tables.community.push({ ...c, status: 'ACTIVE', createdAt: now });
+      this.tables.community.push({ ...c, status: 'ACTIVE', ownerId: 'user-demo-admin', createdAt: now });
+    }
+
+    const india = { id: 'country-in', name: 'India', code: 'IN', isActive: true, createdAt: now };
+    this.tables.country.push(india);
+
+    const statesMap: Record<string, string> = {
+      Maharashtra: 'state-mh',
+      Delhi: 'state-dl',
+      Karnataka: 'state-ka',
+      Telangana: 'state-ts',
+      'Tamil Nadu': 'state-tn',
+      'West Bengal': 'state-wb',
+      Gujarat: 'state-gj',
+      Rajasthan: 'state-rj',
+      'Uttar Pradesh': 'state-up',
+    };
+
+    for (const [stName, stId] of Object.entries(statesMap)) {
+      this.tables.state.push({ id: stId, countryId: india.id, name: stName, code: stName.substring(0, 2).toUpperCase(), isActive: true, createdAt: now });
+    }
+
+    const geoCities = [
+      { id: 'city-mumbai', stateId: 'state-mh', name: 'Mumbai', slug: 'mumbai', aliases: ['Bombay'], centerLat: 19.076, centerLng: 72.8777, radiusKm: 30, isActive: true, activatedAt: now, createdAt: now },
+      { id: 'city-delhi', stateId: 'state-dl', name: 'Delhi', slug: 'delhi', aliases: ['New Delhi', 'NCR'], centerLat: 28.6139, centerLng: 77.209, radiusKm: 30, isActive: true, activatedAt: now, createdAt: now },
+      { id: 'city-bengaluru', stateId: 'state-ka', name: 'Bengaluru', slug: 'bengaluru', aliases: ['Bangalore', 'BLR'], centerLat: 12.9716, centerLng: 77.5946, radiusKm: 30, isActive: true, activatedAt: now, createdAt: now },
+      { id: 'city-hyderabad', stateId: 'state-ts', name: 'Hyderabad', slug: 'hyderabad', aliases: ['HYD', 'Secunderabad'], centerLat: 17.385, centerLng: 78.4867, radiusKm: 30, isActive: true, activatedAt: now, createdAt: now },
+      { id: 'city-chennai', stateId: 'state-tn', name: 'Chennai', slug: 'chennai', aliases: ['Madras', 'MAA'], centerLat: 13.0827, centerLng: 80.2707, radiusKm: 30, isActive: true, activatedAt: now, createdAt: now },
+      { id: 'city-kolkata', stateId: 'state-wb', name: 'Kolkata', slug: 'kolkata', aliases: ['Calcutta', 'CCU'], centerLat: 22.5726, centerLng: 88.3639, radiusKm: 30, isActive: true, activatedAt: now, createdAt: now },
+      { id: 'city-pune', stateId: 'state-mh', name: 'Pune', slug: 'pune', aliases: ['Poona', 'PNQ'], centerLat: 18.5204, centerLng: 73.8567, radiusKm: 30, isActive: true, activatedAt: now, createdAt: now },
+      { id: 'city-ahmedabad', stateId: 'state-gj', name: 'Ahmedabad', slug: 'ahmedabad', aliases: ['Amdavad', 'AMD'], centerLat: 23.0225, centerLng: 72.5714, radiusKm: 30, isActive: true, activatedAt: now, createdAt: now },
+      { id: 'city-jaipur', stateId: 'state-rj', name: 'Jaipur', slug: 'jaipur', aliases: ['Pink City', 'JAI'], centerLat: 26.9124, centerLng: 75.7873, radiusKm: 30, isActive: true, activatedAt: now, createdAt: now },
+      { id: 'city-lucknow', stateId: 'state-up', name: 'Lucknow', slug: 'lucknow', aliases: ['LKO', 'City of Nawabs'], centerLat: 26.8467, centerLng: 80.9462, radiusKm: 30, isActive: true, activatedAt: now, createdAt: now },
+    ];
+
+    for (const gc of geoCities) {
+      this.tables.city.push(gc);
     }
 
     const demoUserId = 'user-demo-admin';
@@ -593,6 +772,8 @@ export class InMemoryPrismaStore {
         visibility: 'COMMUNITY',
         commentsEnabled: true,
         geoCell: null,
+        isDraft: false,
+        isPinned: false,
         expiresAt: null,
         createdAt: new Date(now.getTime() - idx * 60000),
         updatedAt: now,
@@ -601,3 +782,4 @@ export class InMemoryPrismaStore {
     });
   }
 }
+
