@@ -83,10 +83,33 @@ export default function PostDetailScreen() {
     },
   });
 
-  const handleBlockAuthor = async () => {
-    if (!post?.author_user_id) return;
+  const votePollMutation = useMutation({
+    mutationFn: (optionId: string) => postsApi.votePoll(id, optionId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['post', id] });
+      void queryClient.invalidateQueries({ queryKey: ['feed'] });
+    },
+    onError: (err) => {
+      setErrorMsg(userMessageForCode(err));
+    },
+  });
+
+  const handleDeletePost = async () => {
+    if (!post?.id) return;
     try {
-      await safetyApi.blockUser(post.author_user_id, post.anonymous_name);
+      await postsApi.remove(post.id);
+      void queryClient.invalidateQueries({ queryKey: ['feed'] });
+      void queryClient.invalidateQueries({ queryKey: ['my-posts'] });
+      router.back();
+    } catch (err) {
+      setErrorMsg(userMessageForCode(err));
+    }
+  };
+
+  const handleBlockAuthor = async () => {
+    if (!post?.id) return;
+    try {
+      await safetyApi.blockByContent('POST', post.id, post.anonymous_name);
       setActionMsg(`Blocked ${post.anonymous_name}. Their posts will be hidden.`);
     } catch (err) {
       setErrorMsg(userMessageForCode(err));
@@ -122,10 +145,17 @@ export default function PostDetailScreen() {
               <Ionicons name="flag-outline" size={16} color={colors.textSecondary} />
               <Text style={styles.smallActionText}>Report</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.smallAction} onPress={handleBlockAuthor}>
-              <Ionicons name="ban-outline" size={16} color={colors.danger} />
-              <Text style={[styles.smallActionText, { color: colors.danger }]}>Block</Text>
-            </TouchableOpacity>
+            {post.is_own ? (
+              <TouchableOpacity style={styles.smallAction} onPress={handleDeletePost}>
+                <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                <Text style={[styles.smallActionText, { color: colors.danger }]}>Delete</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.smallAction} onPress={handleBlockAuthor}>
+                <Ionicons name="ban-outline" size={16} color={colors.danger} />
+                <Text style={[styles.smallActionText, { color: colors.danger }]}>Block</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </View>
@@ -151,6 +181,51 @@ export default function PostDetailScreen() {
               </Text>
             </View>
             <Text style={styles.postContent}>{post.content}</Text>
+
+            {post.poll && (
+              <View style={styles.pollContainer}>
+                <View style={styles.pollHeader}>
+                  <Ionicons name="bar-chart-outline" size={15} color={colors.accent} />
+                  <Text style={styles.pollQuestion}>{post.poll.question}</Text>
+                </View>
+                {post.poll.options?.map((option) => {
+                  const totalVotes =
+                    post.poll?.total_votes ??
+                    post.poll?.options?.reduce((sum, o) => sum + (o.votes ?? o.voteCount ?? 0), 0) ??
+                    0;
+                  const optVotes = option.votes ?? option.voteCount ?? 0;
+                  const percentage = totalVotes > 0 ? Math.round((optVotes / totalVotes) * 100) : 0;
+                  const isVoted = post.poll?.user_voted_option_id === option.id;
+
+                  return (
+                    <TouchableOpacity
+                      key={option.id}
+                      style={[styles.pollOptionBtn, isVoted && styles.pollOptionBtnVoted]}
+                      disabled={Boolean(post.poll?.user_voted_option_id)}
+                      onPress={() => votePollMutation.mutate(option.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Vote for ${option.option_text ?? option.text}`}
+                    >
+                      {totalVotes > 0 && (
+                        <View style={[styles.pollBarFill, { width: `${percentage}%` }]} />
+                      )}
+                      <View style={styles.pollOptionContent}>
+                        <Text style={[styles.pollOptionText, isVoted && styles.pollOptionTextVoted]}>
+                          {option.option_text ?? option.text}
+                        </Text>
+                        {totalVotes > 0 && (
+                          <Text style={styles.pollPercentageText}>{percentage}% ({optVotes})</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+                <Text style={styles.pollFooterText}>
+                  {post.poll.total_votes ?? 0} total votes
+                  {post.poll.user_voted_option_id ? ' • You voted' : ' • Tap to vote'}
+                </Text>
+              </View>
+            )}
 
             <View style={styles.reactionRow}>
               {REACTION_OPTIONS.map((opt) => {
@@ -456,6 +531,76 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  pollContainer: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    padding: spacing.sm,
+    marginVertical: spacing.sm,
+  },
+  pollHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  pollQuestion: {
+    ...typography.caption,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  pollOptionBtn: {
+    backgroundColor: colors.card,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 6,
+    overflow: 'hidden',
+    position: 'relative',
+    minHeight: 38,
+    justifyContent: 'center',
+  },
+  pollOptionBtnVoted: {
+    borderColor: colors.accent,
+  },
+  pollBarFill: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    backgroundColor: colors.accentMuted,
+  },
+  pollOptionContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    zIndex: 1,
+  },
+  pollOptionText: {
+    ...typography.caption,
+    color: colors.textPrimary,
+    fontWeight: '500',
+    flex: 1,
+  },
+  pollOptionTextVoted: {
+    color: colors.accent,
+    fontWeight: '700',
+  },
+  pollPercentageText: {
+    ...typography.micro,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  pollFooterText: {
+    ...typography.micro,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
 });
 

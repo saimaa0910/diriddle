@@ -64,5 +64,16 @@ export const notificationsApi = {
       throw error;
     }
   },
+
+  async registerDeviceToken(token: string, platform: 'IOS' | 'ANDROID' | 'WEB'): Promise<{ registered: boolean }> {
+    if (isDemoSession()) return { registered: true };
+    try {
+      const res = await apiClient.post('/notifications/device-tokens', { token, platform });
+      return res.data ?? { registered: true };
+    } catch (error) {
+      if (shouldUseDemoFallback(error)) return { registered: true };
+      throw error;
+    }
+  },
 };
 

@@ -35,6 +35,8 @@ export default function CreatePostScreen() {
   const [commentsEnabled, setCommentsEnabled] = useState(true);
   const [visibility, setVisibility] = useState<Visibility>(Visibility.COMMUNITY);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
 
   const { data: communitiesData } = useQuery({
     queryKey: ['communities'],
@@ -44,16 +46,31 @@ export default function CreatePostScreen() {
   const communities = communitiesData?.data ?? [];
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      postsApi.create({
+    mutationFn: () => {
+      const isPoll = category === PostCategory.POLL;
+      const cleanOptions = pollOptions.map((o) => o.trim()).filter(Boolean);
+
+      return postsApi.create({
         community_id: communityId,
         category,
         content: content.trim(),
         visibility,
         comments_enabled: commentsEnabled,
-      }),
+        ...(isPoll
+          ? {
+              poll: {
+                question: (pollQuestion.trim() || content.trim()).slice(0, 280),
+                options: cleanOptions,
+                closes_in_hours: 24,
+              },
+            }
+          : {}),
+      });
+    },
     onSuccess: () => {
       setContent('');
+      setPollQuestion('');
+      setPollOptions(['', '']);
       setErrorMsg(null);
       void queryClient.invalidateQueries({ queryKey: ['feed'] });
       void queryClient.invalidateQueries({ queryKey: ['my-posts'] });
@@ -69,6 +86,13 @@ export default function CreatePostScreen() {
     if (!content.trim()) {
       setErrorMsg('Write something before posting.');
       return;
+    }
+    if (category === PostCategory.POLL) {
+      const validOptions = pollOptions.map((o) => o.trim()).filter(Boolean);
+      if (validOptions.length < 2) {
+        setErrorMsg('Polls require at least 2 non-empty choices.');
+        return;
+      }
     }
     createMutation.mutate();
   };
@@ -143,6 +167,54 @@ export default function CreatePostScreen() {
           multiline
           maxLength={MAX_CHARS}
         />
+
+        {category === PostCategory.POLL && (
+          <View style={styles.pollBuilder}>
+            <View style={styles.pollBuilderHeader}>
+              <Ionicons name="stats-chart" size={16} color={colors.accent} />
+              <Text style={styles.pollBuilderTitle}>Poll Setup</Text>
+            </View>
+            <TextInput
+              style={styles.pollInput}
+              placeholder="Poll Question (optional, defaults to message)"
+              placeholderTextColor={colors.textMuted}
+              value={pollQuestion}
+              onChangeText={setPollQuestion}
+            />
+            {pollOptions.map((opt, idx) => (
+              <View key={idx} style={styles.pollOptionRow}>
+                <TextInput
+                  style={[styles.pollInput, { flex: 1, marginBottom: 0 }]}
+                  placeholder={`Choice ${idx + 1}`}
+                  placeholderTextColor={colors.textMuted}
+                  value={opt}
+                  onChangeText={(val) => {
+                    const next = [...pollOptions];
+                    next[idx] = val;
+                    setPollOptions(next);
+                  }}
+                />
+                {pollOptions.length > 2 && (
+                  <TouchableOpacity
+                    style={styles.pollRemoveBtn}
+                    onPress={() => setPollOptions(pollOptions.filter((_, i) => i !== idx))}
+                  >
+                    <Ionicons name="close-circle-outline" size={20} color={colors.danger} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+            {pollOptions.length < 4 && (
+              <TouchableOpacity
+                style={styles.pollAddOptionBtn}
+                onPress={() => setPollOptions([...pollOptions, ''])}
+              >
+                <Ionicons name="add" size={16} color={colors.accent} />
+                <Text style={styles.pollAddOptionText}>Add Choice</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         <View style={styles.optionCard}>
           <View style={{ flex: 1 }}>
@@ -345,6 +417,60 @@ const styles = StyleSheet.create({
     ...typography.subtitle,
     color: colors.background,
     fontWeight: '700',
+  },
+  pollBuilder: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  pollBuilderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  pollBuilderTitle: {
+    ...typography.caption,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  pollInput: {
+    backgroundColor: colors.card,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 10,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  pollOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  pollRemoveBtn: {
+    padding: 6,
+  },
+  pollAddOptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: colors.accentBorder,
+    borderRadius: radii.md,
+    marginTop: 4,
+  },
+  pollAddOptionText: {
+    ...typography.caption,
+    color: colors.accent,
+    fontWeight: '600',
   },
 });
 

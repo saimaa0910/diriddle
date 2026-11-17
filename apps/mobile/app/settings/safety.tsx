@@ -22,6 +22,8 @@ export default function SafetyCenterScreen() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [showDeleteBox, setShowDeleteBox] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [appealReason, setAppealReason] = useState('');
+  const [appealSuccessMsg, setAppealSuccessMsg] = useState<string | null>(null);
 
   const { data: blockedData } = useQuery({
     queryKey: ['blocked-accounts'],
@@ -31,6 +33,16 @@ export default function SafetyCenterScreen() {
   const { data: reportsData } = useQuery({
     queryKey: ['my-reports'],
     queryFn: () => safetyApi.getMyReports(),
+  });
+
+  const appealMutation = useMutation({
+    mutationFn: () => safetyApi.submitAppeal({ reason: appealReason.trim() }),
+    onSuccess: () => {
+      setAppealReason('');
+      setAppealSuccessMsg('Your appeal was submitted. Our safety team will review it within 24 hours.');
+      setTimeout(() => setAppealSuccessMsg(null), 5000);
+    },
+    onError: (err) => setErrorMsg(userMessageForCode(err)),
   });
 
   const unblockMutation = useMutation({
@@ -116,6 +128,37 @@ export default function SafetyCenterScreen() {
             </View>
           ))
         )}
+
+        <Text style={styles.sectionTitle}>Moderation Appeals</Text>
+        {appealSuccessMsg && (
+          <View style={styles.successBanner}>
+            <Ionicons name="checkmark-circle-outline" size={16} color={colors.accent} />
+            <Text style={styles.successText}>{appealSuccessMsg}</Text>
+          </View>
+        )}
+        <View style={styles.appealCard}>
+          <Text style={styles.cardTitle}>Submit a Moderation Appeal</Text>
+          <Text style={styles.cardBody}>
+            If your post was removed or account flagged in error, submit an appeal for human safety review.
+          </Text>
+          <TextInput
+            style={[styles.input, { height: 70, textAlignVertical: 'top', marginTop: spacing.xs }]}
+            placeholder="Explain why your content or account should be restored..."
+            placeholderTextColor={colors.textMuted}
+            value={appealReason}
+            onChangeText={setAppealReason}
+            multiline
+          />
+          <TouchableOpacity
+            style={[styles.appealBtn, (!appealReason.trim() || appealMutation.isPending) && { opacity: 0.5 }]}
+            disabled={!appealReason.trim() || appealMutation.isPending}
+            onPress={() => appealMutation.mutate()}
+          >
+            <Text style={styles.appealBtnText}>
+              {appealMutation.isPending ? 'Submitting...' : 'Submit Appeal'}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         <Text style={styles.sectionTitle}>Danger Zone</Text>
         {!showDeleteBox ? (
@@ -333,6 +376,42 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.background,
     fontWeight: '700',
+  },
+  appealCard: {
+    backgroundColor: colors.card,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  appealBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: radii.sm,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  appealBtnText: {
+    ...typography.caption,
+    color: colors.background,
+    fontWeight: '700',
+  },
+  successBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.accentMuted,
+    borderWidth: 1,
+    borderColor: colors.accentBorder,
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  successText: {
+    ...typography.caption,
+    color: colors.textPrimary,
+    flex: 1,
   },
 });
 

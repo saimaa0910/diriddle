@@ -139,6 +139,7 @@ export class TrendingService {
         include: {
           anonymousIdentity: true,
           community: true,
+          poll: { include: { options: true } },
           _count: { select: { comments: true, reactions: true } },
         },
       });
@@ -169,6 +170,7 @@ export class TrendingService {
       include: {
         anonymousIdentity: true,
         community: true,
+        poll: { include: { options: true } },
         _count: { select: { comments: true, reactions: true } },
       },
       take: 100,
@@ -205,6 +207,7 @@ export class TrendingService {
       comment_count: p._count?.comments ?? 0,
       reaction_count: p._count?.reactions ?? 0,
       trending_score: score,
+      poll: p.poll ?? null,
       created_at: p.createdAt,
     };
   }

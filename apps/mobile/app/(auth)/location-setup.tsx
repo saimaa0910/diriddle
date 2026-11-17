@@ -6,6 +6,7 @@ import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { colors, radii, spacing, typography } from '../../src/design-system/tokens';
 import { useLocationStore } from '../../src/store/location-store';
 import { detectApproximateCity, INDIA_CITIES, IndiaCity } from '../../src/utils/location';
+import { locationApi } from '../../src/api/location.api';
 
 export default function LocationSetupScreen() {
   const router = useRouter();
@@ -33,6 +34,13 @@ export default function LocationSetupScreen() {
 
   const handleConfirm = async () => {
     await setCity(selected);
+    void locationApi.setPreference({
+      selected_city: selected.name,
+      selected_state: selected.state,
+      lat: selected.lat,
+      lng: selected.lng,
+      location_permission_granted: false,
+    });
     router.replace('/(tabs)');
   };
 

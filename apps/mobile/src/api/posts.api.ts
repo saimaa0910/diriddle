@@ -15,6 +15,11 @@ export interface CreatePostInput {
   content: string;
   visibility: Visibility;
   comments_enabled: boolean;
+  poll?: {
+    question: string;
+    options: string[];
+    closes_in_hours?: number;
+  };
 }
 
 export const postsApi = {
@@ -38,6 +43,18 @@ export const postsApi = {
         is_saved: false,
         comments_enabled: input.comments_enabled,
         visibility: input.visibility,
+        poll: input.poll
+          ? {
+              id: `poll-${Date.now()}`,
+              question: input.poll.question,
+              options: input.poll.options.map((optText, i) => ({
+                id: `opt-${i}`,
+                option_text: optText,
+                votes: 0,
+              })),
+              total_votes: 0,
+            }
+          : null,
         created_at: new Date().toISOString(),
       };
       prependLocalDemoPost(newPost);
@@ -158,6 +175,45 @@ export const postsApi = {
       }
       await apiClient.post(`/posts/${postId}/save`);
       return { saved: true };
+    } catch (error) {
+      if (shouldUseDemoFallback(error)) return applyDemo();
+      throw error;
+    }
+  },
+
+  async votePoll(postId: string, optionId: string): Promise<any> {
+    const applyDemo = () => {
+      let updatedPoll: any = null;
+      updateLocalDemoPost(postId, (p) => {
+        if (!p.poll) return p;
+        const options = p.poll.options.map((opt) => {
+          const isSelected = opt.id === optionId;
+          const prevVotes = opt.votes ?? opt.voteCount ?? 0;
+          return {
+            ...opt,
+            votes: isSelected ? prevVotes + 1 : prevVotes,
+            voteCount: isSelected ? prevVotes + 1 : prevVotes,
+          };
+        });
+        const total = options.reduce((sum, o) => sum + (o.votes ?? o.voteCount ?? 0), 0);
+        updatedPoll = {
+          ...p.poll,
+          options,
+          total_votes: total,
+          user_voted_option_id: optionId,
+        };
+        return { ...p, poll: updatedPoll };
+      });
+      return updatedPoll ?? { poll_id: postId, user_option_id: optionId };
+    };
+
+    if (isDemoSession()) return applyDemo();
+
+    try {
+      const res = await apiClient.post(`/posts/${postId}/poll/vote`, {
+        option_id: optionId,
+      });
+      return res.data;
     } catch (error) {
       if (shouldUseDemoFallback(error)) return applyDemo();
       throw error;

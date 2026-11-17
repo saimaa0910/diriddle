@@ -16,6 +16,31 @@ export {
   Visibility,
 };
 
+export interface PollOptionData {
+  id: string;
+  option_text?: string;
+  text?: string;
+  votes?: number;
+  voteCount?: number;
+}
+
+export interface PollData {
+  id: string;
+  question: string;
+  options: PollOptionData[];
+  closes_at?: string;
+  closesAt?: string;
+  total_votes?: number;
+  user_voted_option_id?: string | null;
+}
+
+export interface PostAttachment {
+  id: string;
+  url: string;
+  mime_type?: string;
+  size_bytes?: number;
+}
+
 export interface PostItem {
   id: string;
   anonymous_name: string;
@@ -31,8 +56,11 @@ export interface PostItem {
   reaction_counts?: Partial<Record<ReactionType, number>>;
   my_reaction?: ReactionType | null;
   is_saved?: boolean;
+  is_own?: boolean;
   comments_enabled?: boolean;
   visibility?: Visibility;
+  poll?: PollData | null;
+  attachments?: PostAttachment[];
   created_at: string;
 }
 

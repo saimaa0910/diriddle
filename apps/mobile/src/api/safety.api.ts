@@ -48,6 +48,56 @@ export const safetyApi = {
     }
   },
 
+  async blockByContent(
+    targetType: 'POST' | 'COMMENT',
+    targetId: string,
+    displayLabel = 'Anonymous user',
+  ): Promise<{ blocked: boolean }> {
+    const addDemo = () => {
+      const demoId = `blocked-author-${targetId}`;
+      if (!localBlocked.some((b) => b.blocked_id === demoId)) {
+        localBlocked = [
+          { blocked_id: demoId, display_label: displayLabel, created_at: new Date().toISOString() },
+          ...localBlocked,
+        ];
+      }
+      return { blocked: true };
+    };
+
+    if (isDemoSession()) return addDemo();
+
+    try {
+      const res = await apiClient.post('/blocks/by-content', {
+        target_type: targetType,
+        target_id: targetId,
+      });
+      return res.data;
+    } catch (error) {
+      if (shouldUseDemoFallback(error)) return addDemo();
+      throw error;
+    }
+  },
+
+  async submitAppeal(input: {
+    report_id?: string;
+    reason: string;
+  }): Promise<{ id: string; status: string }> {
+    const createDemo = () => ({
+      id: `appeal-${Date.now()}`,
+      status: 'PENDING',
+    });
+
+    if (isDemoSession()) return createDemo();
+
+    try {
+      const res = await apiClient.post('/moderation/appeals', input);
+      return res.data;
+    } catch (error) {
+      if (shouldUseDemoFallback(error)) return createDemo();
+      throw error;
+    }
+  },
+
   async blockUser(userId: string, displayLabel = 'Anonymous user'): Promise<{ blocked: boolean }> {
     const addDemo = () => {
       if (!localBlocked.some((b) => b.blocked_id === userId)) {

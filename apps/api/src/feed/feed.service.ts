@@ -165,6 +165,7 @@ export class FeedService {
       include: {
         anonymousIdentity: true,
         community: true,
+        poll: { include: { options: true } },
         _count: { select: { comments: true, reactions: true } },
       },
     });
@@ -299,6 +300,7 @@ export class FeedService {
       include: {
         anonymousIdentity: true,
         community: true,
+        poll: { include: { options: true } },
         _count: { select: { comments: true, reactions: true } },
       },
     });
@@ -323,6 +325,7 @@ export class FeedService {
       comments_enabled: p.commentsEnabled,
       comment_count: p._count?.comments ?? 0,
       reaction_count: p._count?.reactions ?? 0,
+      poll: p.poll ?? null,
       created_at: p.createdAt,
     };
   }
