@@ -1,0 +1,39 @@
+# syntax=docker/dockerfile:1
+
+FROM node:22-alpine AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-workspace.yaml tsconfig.base.json ./
+COPY pnpm-lock.yaml* ./
+COPY packages/shared-types/package.json ./packages/shared-types/package.json
+COPY apps/admin/package.json ./apps/admin/package.json
+RUN pnpm install --filter @diriddle/admin... --no-frozen-lockfile
+
+FROM deps AS builder
+COPY packages/shared-types ./packages/shared-types
+COPY apps/admin ./apps/admin
+RUN pnpm --filter @diriddle/shared-types build
+RUN pnpm --filter @diriddle/admin build
+
+FROM node:22-alpine AS runner
+ENV NODE_ENV=production
+ENV PORT=3001
+WORKDIR /app
+
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+COPY --from=builder --chown=nextjs:nodejs /app/apps/admin/.next ./.next
+COPY --from=builder --chown=nextjs:nodejs /app/apps/admin/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/apps/admin/package.json ./package.json
+
+USER nextjs
+EXPOSE 3001
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget -qO- http://localhost:3001/ || exit 1
+
+CMD ["pnpm", "start"]
