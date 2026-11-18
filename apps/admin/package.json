@@ -12,7 +12,26 @@
     "test": "node --test src/__tests__/*.test.mjs",
     "desktop": "electron electron/main.js",
     "desktop:dev": "node electron/run-dev.js",
-    "desktop:start": "electron electron/main.js"
+    "desktop:start": "electron electron/main.js",
+    "desktop:dist": "next build && electron-builder --win",
+    "desktop:pack": "next build && electron-builder --win --dir"
+  },
+  "build": {
+    "appId": "in.diriddle.admin",
+    "productName": "diriddle-admin",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**/*",
+      "out/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ]
+    }
   },
   "dependencies": {
     "@diriddle/shared-types": "workspace:*",
@@ -31,6 +50,7 @@
     "@types/react-dom": "^19.0.0",
     "autoprefixer": "^10.4.20",
     "electron": "^45.3.4",
+    "electron-builder": "^26.18.0",
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.1.0",
     "postcss": "^8.4.49",

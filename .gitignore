@@ -8,6 +8,7 @@ build/
 out/
 .next/
 web-build/
+dist-electron/
 *.tsbuildinfo
 
 # Expo / React Native

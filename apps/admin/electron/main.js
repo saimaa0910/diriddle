@@ -1,12 +1,15 @@
 const { app, BrowserWindow, ipcMain, Notification, shell, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const http = require('http');
 const { spawn } = require('child_process');
 const { createApplicationMenu } = require('./menu');
+const { startStaticServer } = require('./server');
 
 let mainWindow = null;
 let tray = null;
 let nextServerProcess = null;
+let localStaticServer = null;
 
 const PORT = process.env.PORT || 3001;
 const TARGET_URL = process.env.ELECTRON_START_URL || `http://127.0.0.1:${PORT}`;
@@ -176,18 +179,29 @@ ipcMain.handle('desktop:close', () => {
 });
 
 app.whenReady().then(async () => {
-  const ready = await isServerReady(TARGET_URL);
+  let targetUrl = TARGET_URL;
+  const outDir = path.join(__dirname, '..', 'out');
 
-  if (!ready && process.env.NODE_ENV !== 'development') {
-    startNextProductionServer();
+  if (fs.existsSync(outDir) && process.env.NODE_ENV !== 'development') {
+    try {
+      const staticInstance = await startStaticServer(outDir, PORT);
+      localStaticServer = staticInstance.server;
+      targetUrl = staticInstance.url;
+    } catch {
+      targetUrl = TARGET_URL;
+    }
+  } else {
+    const ready = await isServerReady(TARGET_URL);
+    if (!ready && process.env.NODE_ENV !== 'development') {
+      startNextProductionServer();
+    }
+    await waitForServer(TARGET_URL, 45000);
   }
-
-  await waitForServer(TARGET_URL, 45000);
 
   createMainWindow();
   createTray();
 
-  await mainWindow.loadURL(TARGET_URL);
+  await mainWindow.loadURL(targetUrl);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -197,6 +211,10 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', () => {
+  if (localStaticServer) {
+    localStaticServer.close();
+    localStaticServer = null;
+  }
   if (nextServerProcess) {
     nextServerProcess.kill();
     nextServerProcess = null;

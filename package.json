@@ -15,7 +15,8 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
     "test:windows": "powershell -ExecutionPolicy Bypass -File scripts/start-windows-test.ps1",
     "desktop:admin": "pnpm --filter @diriddle/admin desktop:dev",
-    "desktop:admin:start": "pnpm --filter @diriddle/admin desktop:start"
+    "desktop:admin:start": "pnpm --filter @diriddle/admin desktop:start",
+    "host": "node scripts/host-all.js"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
