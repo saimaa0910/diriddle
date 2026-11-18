@@ -13,7 +13,9 @@
     "test:e2e": "pnpm --filter @diriddle/api test:e2e",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
-    "test:windows": "powershell -ExecutionPolicy Bypass -File scripts/start-windows-test.ps1"
+    "test:windows": "powershell -ExecutionPolicy Bypass -File scripts/start-windows-test.ps1",
+    "desktop:admin": "pnpm --filter @diriddle/admin desktop:dev",
+    "desktop:admin:start": "pnpm --filter @diriddle/admin desktop:start"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",

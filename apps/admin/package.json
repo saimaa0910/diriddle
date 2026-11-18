@@ -2,12 +2,17 @@
   "name": "@diriddle/admin",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start -p 3001",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "node --test src/__tests__/*.test.mjs",
+    "desktop": "electron electron/main.js",
+    "desktop:dev": "node electron/run-dev.js",
+    "desktop:start": "electron electron/main.js"
   },
   "dependencies": {
     "@diriddle/shared-types": "workspace:*",
@@ -25,6 +30,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "autoprefixer": "^10.4.20",
+    "electron": "^45.3.4",
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.1.0",
     "postcss": "^8.4.49",

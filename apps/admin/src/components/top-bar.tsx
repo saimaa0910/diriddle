@@ -1,13 +1,20 @@
 'use client';
 
-import React, { useState } from 'react';
-import { RefreshCw, Wifi, WifiOff, Lock } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { RefreshCw, Wifi, WifiOff, Lock, Monitor } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/api-client';
 import { useAdmin } from './providers';
 
 export function TopBar() {
   const { isDemoMode, retryApiConnection, session } = useAdmin();
   const [checking, setChecking] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && (window as any).desktopApi?.isDesktop) {
+      setIsDesktop(true);
+    }
+  }, []);
 
   const handleRetry = async () => {
     setChecking(true);
@@ -48,6 +55,13 @@ export function TopBar() {
           <div className="flex items-center gap-2 rounded-full border border-emerald-500/35 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-200">
             <Wifi className="h-3.5 w-3.5 text-emerald-400" />
             <span>Connected: {API_BASE_URL}</span>
+          </div>
+        )}
+
+        {isDesktop && (
+          <div className="flex items-center gap-1.5 rounded-full border border-indigo-500/40 bg-indigo-500/10 px-2.5 py-1 text-xs font-semibold text-indigo-300">
+            <Monitor className="h-3.5 w-3.5 text-indigo-400" />
+            <span>Desktop</span>
           </div>
         )}
 

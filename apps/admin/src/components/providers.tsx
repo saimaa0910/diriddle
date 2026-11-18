@@ -69,6 +69,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
     (title: string, tone: ToastMessage['tone'] = 'info') => {
       const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       setToasts((prev) => [...prev, { id, title, tone }]);
+
+      if (typeof window !== 'undefined' && (window as any).desktopApi?.sendNotification) {
+        void (window as any).desktopApi.sendNotification('diriddle Admin Console', title);
+      }
+
       setTimeout(() => {
         setToasts((prev) => prev.filter((item) => item.id !== id));
       }, 3800);
